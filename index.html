@@ -698,6 +698,11 @@ body {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           Nueva consulta
         </button>
+        <div class="sidebar-sep" id="admin-sep" style="display:none;"></div>
+        <button class="sidebar-item" id="admin-btn" style="display:none;" onclick="planetNav(this,'planet-usuarios')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+          Usuarios
+        </button>
       </nav>
 
       <div class="main-content">
@@ -712,6 +717,42 @@ body {
         <!-- Planet sub: Enviadas -->
         <div class="planet-sub" id="planet-enviadas">
           <div id="planet-enviadas-list"></div>
+        </div>
+
+        <!-- Planet sub: Usuarios (admin only) -->
+        <div class="planet-sub" id="planet-usuarios">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+            <h3 style="margin:0;font-size:17px;font-weight:600;color:var(--text-primary);">Gestión de Usuarios</h3>
+            <button class="btn-send" onclick="toggleNewUserForm()" id="btn-toggle-new-user" style="font-size:13px;padding:8px 16px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Nuevo usuario
+            </button>
+          </div>
+          <div id="new-user-form" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+              <div class="field"><label>Usuario</label><input type="text" id="nu-user" placeholder="ej: juan.empresa"></div>
+              <div class="field"><label>Nombre</label><input type="text" id="nu-name" placeholder="Nombre completo"></div>
+              <div class="field"><label>Contraseña</label><input type="text" id="nu-pass" placeholder="Contraseña"></div>
+              <div class="field"><label>Equipo</label>
+                <select id="nu-team" onchange="toggleClienteField()">
+                  <option value="cliente">Cliente</option>
+                  <option value="planet">Planet</option>
+                </select>
+              </div>
+              <div class="field" id="nu-empresa-wrap"><label>Empresa</label><input type="text" id="nu-empresa" placeholder="Nombre del cliente"></div>
+              <div class="field"><label>Rol</label>
+                <select id="nu-role">
+                  <option value="user">Usuario</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
+              <button style="padding:8px 16px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text-secondary);cursor:pointer;font-size:13px;" onclick="toggleNewUserForm()">Cancelar</button>
+              <button class="btn-send" style="font-size:13px;padding:8px 16px;" onclick="createUser()">Crear usuario</button>
+            </div>
+          </div>
+          <div id="users-list"></div>
         </div>
 
         <!-- Planet sub: Nueva consulta -->
@@ -822,6 +863,7 @@ async function doLogin() {
   }
 
   currentUser = res.user;
+  currentUser._pass = pass;
   try { localStorage.setItem('planet_user', JSON.stringify(currentUser)); } catch(e) {}
 
   if (currentUser.team === 'planet') {
@@ -1097,6 +1139,11 @@ function initPlanetView() {
   $('planet-role').textContent = 'Planet · ' + (currentUser.role === 'admin' ? 'Admin' : 'Usuario');
   $('planet-avatar').textContent = currentUser.nombre[0];
   $('planet-avatar').style.background = avatarColor(currentUser.nombre);
+  // Show admin section if user is admin
+  if (currentUser.role === 'admin') {
+    $('admin-sep').style.display = '';
+    $('admin-btn').style.display = '';
+  }
   show('screen-planet');
   loadPlanetData();
 }
@@ -1375,6 +1422,78 @@ function planetNav(btn, id) {
   btn.classList.add('active');
   document.querySelectorAll('#screen-planet .planet-sub').forEach(s => s.classList.remove('active'));
   $(id).classList.add('active');
+  if (id === 'planet-usuarios') loadUsers();
+}
+
+// ═══ ADMIN: USER MANAGEMENT ═══
+function toggleNewUserForm() {
+  const f = $('new-user-form');
+  f.style.display = f.style.display === 'none' ? '' : 'none';
+}
+
+function toggleClienteField() {
+  $('nu-empresa-wrap').style.display = $('nu-team').value === 'cliente' ? '' : 'none';
+}
+
+async function loadUsers() {
+  $('users-list').innerHTML = '<div class="spinner"></div>';
+  const res = await api({ action: 'usuarios' });
+  let users = [];
+  if (res.ok) {
+    users = res.usuarios;
+  } else {
+    $('users-list').innerHTML = '<div class="empty-state"><p>Error cargando usuarios</p></div>'; return;
+  }
+  if (users.length === 0) {
+    $('users-list').innerHTML = '<div class="empty-state"><p>No hay usuarios</p></div>';
+    return;
+  }
+  const teamLabel = t => t === 'planet' ? '<span style="background:#3b82f6;color:#fff;padding:2px 8px;border-radius:6px;font-size:12px;">Planet</span>' : '<span style="background:#10b981;color:#fff;padding:2px 8px;border-radius:6px;font-size:12px;">Cliente</span>';
+  const roleLabel = r => r === 'admin' ? '<span style="background:#f59e0b;color:#000;padding:2px 8px;border-radius:6px;font-size:12px;">Admin</span>' : '';
+  let html = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:14px;">';
+  html += '<thead><tr style="border-bottom:2px solid var(--border);text-align:left;">';
+  html += '<th style="padding:10px 8px;">Usuario</th><th style="padding:10px 8px;">Nombre</th><th style="padding:10px 8px;">Equipo</th><th style="padding:10px 8px;">Empresa</th><th style="padding:10px 8px;">Rol</th>';
+  html += '</tr></thead><tbody>';
+  users.forEach(u => {
+    html += '<tr style="border-bottom:1px solid var(--border);">';
+    html += `<td style="padding:10px 8px;font-weight:500;">${esc(u.usuario)}</td>`;
+    html += `<td style="padding:10px 8px;">${esc(u.nombre)}</td>`;
+    html += `<td style="padding:10px 8px;">${teamLabel(u.team)}</td>`;
+    html += `<td style="padding:10px 8px;">${esc(u.cliente || '-')}</td>`;
+    html += `<td style="padding:10px 8px;">${roleLabel(u.role)}</td>`;
+    html += '</tr>';
+  });
+  html += '</tbody></table></div>';
+  $('users-list').innerHTML = html;
+}
+
+async function createUser() {
+  const usuario = $('nu-user').value.trim();
+  const nombre = $('nu-name').value.trim();
+  const password = $('nu-pass').value.trim();
+  const team = $('nu-team').value;
+  const empresa = team === 'cliente' ? $('nu-empresa').value.trim() : '-';
+  const role = $('nu-role').value;
+
+  if (!usuario || !nombre || !password) { toast('Completá usuario, nombre y contraseña'); return; }
+  if (team === 'cliente' && !empresa) { toast('Ingresá el nombre de la empresa'); return; }
+
+  const res = await api({
+    action: 'crear_usuario',
+    usuario, password, nombre, team, cliente: empresa, role
+  });
+
+  if (res.ok) {
+    toast('Usuario creado');
+    $('nu-user').value = '';
+    $('nu-name').value = '';
+    $('nu-pass').value = '';
+    $('nu-empresa').value = '';
+    toggleNewUserForm();
+    loadUsers();
+  } else {
+    toast('Error: ' + (res.error || 'No se pudo crear'));
+  }
 }
 
 // ── INIT ──
