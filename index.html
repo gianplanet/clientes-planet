@@ -699,6 +699,10 @@ body {
           Nueva consulta
         </button>
         <div class="sidebar-sep" id="admin-sep" style="display:none;"></div>
+        <button class="sidebar-item" id="admin-clientes-btn" style="display:none;" onclick="planetNav(this,'planet-clientes')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          Clientes
+        </button>
         <button class="sidebar-item" id="admin-btn" style="display:none;" onclick="planetNav(this,'planet-usuarios')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
           Usuarios
@@ -717,6 +721,32 @@ body {
         <!-- Planet sub: Enviadas -->
         <div class="planet-sub" id="planet-enviadas">
           <div id="planet-enviadas-list"></div>
+        </div>
+
+        <!-- Planet sub: Clientes (admin only) -->
+        <div class="planet-sub" id="planet-clientes">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+            <h3 style="margin:0;font-size:17px;font-weight:600;">Gestión de Clientes</h3>
+            <button class="btn-send" onclick="toggleNewClientForm()" id="btn-toggle-new-client" style="font-size:13px;padding:8px 16px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Nuevo cliente
+            </button>
+          </div>
+          <div id="new-client-form" style="display:none;background:var(--card);border:1px solid var(--card-border);border-radius:10px;padding:16px;margin-bottom:16px;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+              <div class="field"><label>Nombre empresa *</label><input type="text" id="nc-nombre" placeholder="ej: NUME"></div>
+              <div class="field"><label>Contacto</label><input type="text" id="nc-contacto" placeholder="Nombre de contacto"></div>
+              <div class="field"><label>Teléfono</label><input type="text" id="nc-telefono" placeholder="Tel/WhatsApp"></div>
+              <div class="field"><label>Email</label><input type="email" id="nc-email" placeholder="email@empresa.com"></div>
+              <div class="field" style="grid-column:span 2;"><label>Dirección</label><input type="text" id="nc-direccion" placeholder="Dirección principal"></div>
+              <div class="field" style="grid-column:span 2;"><label>Notas</label><input type="text" id="nc-notas" placeholder="Notas adicionales"></div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
+              <button style="padding:8px 16px;border-radius:8px;border:1px solid var(--card-border);background:var(--card);color:var(--text-secondary);cursor:pointer;font-size:13px;" onclick="toggleNewClientForm()">Cancelar</button>
+              <button class="btn-send" style="font-size:13px;padding:8px 16px;" onclick="createClient()">Crear cliente</button>
+            </div>
+          </div>
+          <div id="clients-list"><div class="spinner"></div></div>
         </div>
 
         <!-- Planet sub: Usuarios (admin only) -->
@@ -739,7 +769,7 @@ body {
                   <option value="planet">Planet</option>
                 </select>
               </div>
-              <div class="field" id="nu-empresa-wrap"><label>Empresa</label><input type="text" id="nu-empresa" placeholder="Nombre del cliente"></div>
+              <div class="field" id="nu-empresa-wrap"><label>Empresa</label><select id="nu-empresa"><option value="">-- Seleccionar --</option></select></div>
               <div class="field"><label>Rol</label>
                 <select id="nu-role">
                   <option value="user">Usuario</option>
@@ -1142,6 +1172,7 @@ function initPlanetView() {
   // Show admin section if user is admin
   if (currentUser.role === 'admin') {
     $('admin-sep').style.display = '';
+    $('admin-clientes-btn').style.display = '';
     $('admin-btn').style.display = '';
   }
   show('screen-planet');
@@ -1422,7 +1453,8 @@ function planetNav(btn, id) {
   btn.classList.add('active');
   document.querySelectorAll('#screen-planet .planet-sub').forEach(s => s.classList.remove('active'));
   $(id).classList.add('active');
-  if (id === 'planet-usuarios') loadUsers();
+  if (id === 'planet-usuarios') { loadUsers(); preloadClients(); }
+  if (id === 'planet-clientes') loadClients();
 }
 
 // ═══ ADMIN: USER MANAGEMENT ═══
@@ -1472,7 +1504,7 @@ async function createUser() {
   const nombre = $('nu-name').value.trim();
   const password = $('nu-pass').value.trim();
   const team = $('nu-team').value;
-  const empresa = team === 'cliente' ? $('nu-empresa').value.trim() : '-';
+  const empresa = team === 'cliente' ? $('nu-empresa').value : '-';
   const role = $('nu-role').value;
 
   if (!usuario || !nombre || !password) { toast('Completá usuario, nombre y contraseña'); return; }
@@ -1494,6 +1526,90 @@ async function createUser() {
   } else {
     toast('Error: ' + (res.error || 'No se pudo crear'));
   }
+}
+
+// ═══ ADMIN: CLIENT MANAGEMENT ═══
+let allClientesData = [];
+
+function toggleNewClientForm() {
+  const f = $('new-client-form');
+  f.style.display = f.style.display === 'none' ? '' : 'none';
+}
+
+async function loadClients() {
+  $('clients-list').innerHTML = '<div class="spinner"></div>';
+  const res = await api({ action: 'clientes' });
+  if (!res.ok) {
+    $('clients-list').innerHTML = '<div class="empty-state"><p>Error cargando clientes</p></div>';
+    return;
+  }
+  allClientesData = res.clientes || [];
+  if (allClientesData.length === 0) {
+    $('clients-list').innerHTML = '<div class="empty-state"><p>No hay clientes registrados</p></div>';
+    return;
+  }
+  let html = '<div style="display:grid;gap:12px;">';
+  allClientesData.forEach(c => {
+    html += `<div style="background:var(--card);border:1px solid var(--card-border);border-radius:10px;padding:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;">
+        <div>
+          <div style="font-weight:600;font-size:16px;">${esc(c.nombre)}</div>
+          <div style="font-size:13px;color:var(--text-muted);margin-top:2px;">Alta: ${esc(c.fecha_alta || '-')}</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin-top:12px;font-size:13px;">
+        <div><span style="color:var(--text-muted);">Contacto:</span> ${esc(c.contacto || '-')}</div>
+        <div><span style="color:var(--text-muted);">Teléfono:</span> ${esc(c.telefono || '-')}</div>
+        <div><span style="color:var(--text-muted);">Email:</span> ${esc(c.email || '-')}</div>
+        <div><span style="color:var(--text-muted);">Dirección:</span> ${esc(c.direccion || '-')}</div>
+      </div>
+      ${c.notas ? `<div style="font-size:13px;color:var(--text-secondary);margin-top:8px;padding-top:8px;border-top:1px solid var(--card-border);">${esc(c.notas)}</div>` : ''}
+    </div>`;
+  });
+  html += '</div>';
+  $('clients-list').innerHTML = html;
+  // Also populate the user form empresa dropdown
+  populateEmpresaDropdown();
+}
+
+function populateEmpresaDropdown() {
+  const sel = $('nu-empresa');
+  if (!sel) return;
+  let opts = '<option value="">-- Seleccionar --</option>';
+  allClientesData.forEach(c => {
+    opts += `<option value="${esc(c.nombre)}">${esc(c.nombre)}</option>`;
+  });
+  sel.innerHTML = opts;
+}
+
+async function createClient() {
+  const nombre = $('nc-nombre').value.trim();
+  if (!nombre) { toast('Ingresá el nombre de la empresa'); return; }
+  const res = await api({
+    action: 'crear_cliente',
+    nombre,
+    contacto: $('nc-contacto').value.trim(),
+    telefono: $('nc-telefono').value.trim(),
+    email: $('nc-email').value.trim(),
+    direccion: $('nc-direccion').value.trim(),
+    notas: $('nc-notas').value.trim()
+  });
+  if (res.ok) {
+    toast('Cliente creado');
+    ['nc-nombre','nc-contacto','nc-telefono','nc-email','nc-direccion','nc-notas'].forEach(id => $(id).value = '');
+    toggleNewClientForm();
+    loadClients();
+  } else {
+    toast('Error: ' + (res.error || 'No se pudo crear'));
+  }
+}
+
+// Load clients on init for empresa dropdown
+async function preloadClients() {
+  try {
+    const res = await api({ action: 'clientes' });
+    if (res.ok) { allClientesData = res.clientes || []; populateEmpresaDropdown(); }
+  } catch(e) {}
 }
 
 // ── INIT ──
