@@ -1557,6 +1557,7 @@ async function loadClients() {
           <div style="font-weight:600;font-size:16px;">${esc(c.nombre)}</div>
           <div style="font-size:13px;color:var(--text-muted);margin-top:2px;">Alta: ${esc(c.fecha_alta || '-')}</div>
         </div>
+        <button onclick="deleteClient(${c.id},'${esc(c.nombre).replace(/'/g,"\\'")}')" style="padding:6px 12px;border-radius:6px;border:1px solid var(--danger);background:var(--danger-bg);color:var(--danger-text);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font);white-space:nowrap;" title="Eliminar cliente">Eliminar</button>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin-top:12px;font-size:13px;">
         <div><span style="color:var(--text-muted);">Contacto:</span> ${esc(c.contacto || '-')}</div>
@@ -1602,6 +1603,17 @@ async function createClient() {
     loadClients();
   } else {
     toast('Error: ' + (res.error || 'No se pudo crear'));
+  }
+}
+
+async function deleteClient(id, nombre) {
+  if (!confirm('\u00bfEliminar el cliente "' + nombre + '"? Esta acci\u00f3n no se puede deshacer.')) return;
+  const res = await api({ action: 'eliminar_cliente', id });
+  if (res.ok) {
+    toast('Cliente eliminado');
+    loadClients();
+  } else {
+    toast('Error: ' + (res.error || 'No se pudo eliminar'));
   }
 }
 
