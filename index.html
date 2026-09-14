@@ -1468,6 +1468,8 @@ function toggleClienteField() {
   $('nu-empresa-wrap').style.display = $('nu-team').value === 'cliente' ? '' : 'none';
 }
 
+let editingUser = null;
+
 async function loadUsers() {
   $('users-list').innerHTML = '<div class="spinner"></div>';
   const res = await api({ action: 'usuarios' });
@@ -1485,19 +1487,85 @@ async function loadUsers() {
   const roleLabel = r => r === 'admin' ? '<span style="background:#f59e0b;color:#000;padding:2px 8px;border-radius:6px;font-size:12px;">Admin</span>' : '';
   let html = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:14px;">';
   html += '<thead><tr style="border-bottom:2px solid var(--border);text-align:left;">';
-  html += '<th style="padding:10px 8px;">Usuario</th><th style="padding:10px 8px;">Nombre</th><th style="padding:10px 8px;">Equipo</th><th style="padding:10px 8px;">Empresa</th><th style="padding:10px 8px;">Rol</th>';
+  html += '<th style="padding:10px 8px;">Usuario</th><th style="padding:10px 8px;">Nombre</th><th style="padding:10px 8px;">Equipo</th><th style="padding:10px 8px;">Empresa</th><th style="padding:10px 8px;">Rol</th><th style="padding:10px 8px;text-align:right;">Acciones</th>';
   html += '</tr></thead><tbody>';
   users.forEach(u => {
-    html += '<tr style="border-bottom:1px solid var(--border);">';
-    html += `<td style="padding:10px 8px;font-weight:500;">${esc(u.usuario)}</td>`;
-    html += `<td style="padding:10px 8px;">${esc(u.nombre)}</td>`;
-    html += `<td style="padding:10px 8px;">${teamLabel(u.team)}</td>`;
-    html += `<td style="padding:10px 8px;">${esc(u.cliente || '-')}</td>`;
-    html += `<td style="padding:10px 8px;">${roleLabel(u.role)}</td>`;
-    html += '</tr>';
+    const uEsc = esc(u.usuario).replace(/'/g,"\\'");
+    if (editingUser === u.usuario) {
+      html += `<tr id="edit-row-${esc(u.usuario)}" style="border-bottom:1px solid var(--border);background:var(--hover);">`;
+      html += `<td style="padding:8px;font-weight:500;">${esc(u.usuario)}</td>`;
+      html += `<td style="padding:8px;"><input type="text" id="eu-nombre" value="${esc(u.nombre)}" style="width:100%;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text-primary);font-size:13px;"></td>`;
+      html += `<td style="padding:8px;"><select id="eu-team" style="padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text-primary);font-size:13px;" onchange="document.getElementById('eu-cliente-wrap').style.display=this.value==='cliente'?'':'none'">`;
+      html += `<option value="planet"${u.team==='planet'?' selected':''}>Planet</option><option value="cliente"${u.team==='cliente'?' selected':''}>Cliente</option></select></td>`;
+      html += `<td style="padding:8px;"><span id="eu-cliente-wrap" style="${u.team==='cliente'?'':'display:none'}"><select id="eu-cliente" style="padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text-primary);font-size:13px;">`;
+      allClientesData.forEach(c => { html += `<option value="${esc(c.nombre)}"${c.nombre===u.cliente?' selected':''}>${esc(c.nombre)}</option>`; });
+      html += `</select></span><span id="eu-planet-dash" style="${u.team==='planet'?'':'display:none'}">-</span></td>`;
+      html += `<td style="padding:8px;"><select id="eu-role" style="padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text-primary);font-size:13px;">`;
+      html += `<option value="user"${u.role==='user'?' selected':''}>Usuario</option><option value="admin"${u.role==='admin'?' selected':''}>Admin</option></select></td>`;
+      html += `<td style="padding:8px;text-align:right;white-space:nowrap;">`;
+      html += `<input type="text" id="eu-pass" placeholder="Nueva contraseña (dejar vacío = no cambiar)" style="width:140px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text-primary);font-size:12px;margin-right:6px;">`;
+      html += `<button onclick="saveUserEdit('${uEsc}')" style="padding:4px 10px;border-radius:6px;border:1px solid #3b82f6;background:#3b82f6;color:#fff;font-size:12px;cursor:pointer;margin-right:4px;">Guardar</button>`;
+      html += `<button onclick="cancelUserEdit()" style="padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text-secondary);font-size:12px;cursor:pointer;">Cancelar</button>`;
+      html += '</td></tr>';
+    } else {
+      html += '<tr style="border-bottom:1px solid var(--border);">';
+      html += `<td style="padding:10px 8px;font-weight:500;">${esc(u.usuario)}</td>`;
+      html += `<td style="padding:10px 8px;">${esc(u.nombre)}</td>`;
+      html += `<td style="padding:10px 8px;">${teamLabel(u.team)}</td>`;
+      html += `<td style="padding:10px 8px;">${esc(u.cliente || '-')}</td>`;
+      html += `<td style="padding:10px 8px;">${roleLabel(u.role)}</td>`;
+      html += `<td style="padding:10px 8px;text-align:right;white-space:nowrap;">`;
+      html += `<button onclick="startEditUser('${uEsc}')" style="padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text-primary);font-size:12px;cursor:pointer;margin-right:4px;" title="Editar">✏️ Editar</button>`;
+      html += `<button onclick="deleteUser('${uEsc}','${esc(u.nombre).replace(/'/g,"\\'")}')" style="padding:4px 10px;border-radius:6px;border:1px solid var(--danger);background:var(--danger-bg);color:var(--danger-text);font-size:12px;cursor:pointer;" title="Eliminar">Eliminar</button>`;
+      html += '</td></tr>';
+    }
   });
   html += '</tbody></table></div>';
   $('users-list').innerHTML = html;
+}
+
+function startEditUser(usuario) {
+  editingUser = usuario;
+  loadUsers();
+}
+
+function cancelUserEdit() {
+  editingUser = null;
+  loadUsers();
+}
+
+async function saveUserEdit(usuario) {
+  const params = { action: 'editar_usuario', usuario };
+  const nombre = $('eu-nombre').value.trim();
+  const team = $('eu-team').value;
+  const cliente = team === 'cliente' ? $('eu-cliente').value : '-';
+  const role = $('eu-role').value;
+  const pass = $('eu-pass').value.trim();
+  if (nombre) params.nombre = nombre;
+  params.team = team;
+  params.cliente = cliente;
+  params.role = role;
+  if (pass) params.password = pass;
+  const res = await api(params);
+  if (res.ok) {
+    toast('Usuario actualizado');
+    editingUser = null;
+    loadUsers();
+  } else {
+    toast('Error: ' + (res.error || 'No se pudo actualizar'));
+  }
+}
+
+async function deleteUser(usuario, nombre) {
+  if (usuario === currentUser.usuario) { toast('No podés eliminar tu propio usuario'); return; }
+  if (!confirm('¿Eliminar el usuario "' + nombre + '" (' + usuario + ')? Esta acción no se puede deshacer.')) return;
+  const res = await api({ action: 'eliminar_usuario', usuario });
+  if (res.ok) {
+    toast('Usuario eliminado');
+    loadUsers();
+  } else {
+    toast('Error: ' + (res.error || 'No se pudo eliminar'));
+  }
 }
 
 async function createUser() {
@@ -1607,7 +1675,7 @@ async function createClient() {
 }
 
 async function deleteClient(id, nombre) {
-  if (!confirm('\u00bfEliminar el cliente "' + nombre + '"? Esta acci\u00f3n no se puede deshacer.')) return;
+  if (!confirm('¿Eliminar el cliente "' + nombre + '"? Esta acción no se puede deshacer.')) return;
   const res = await api({ action: 'eliminar_cliente', id });
   if (res.ok) {
     toast('Cliente eliminado');
