@@ -715,6 +715,7 @@ body {
         <div class="planet-sub active" id="planet-consultas">
           <div id="planet-alert"></div>
           <div class="stats-row" id="planet-stats"></div>
+          <div class="client-filter" id="planet-estado-filter"></div>
           <div class="client-filter" id="planet-filter"></div>
           <div id="planet-consultas-list"></div>
         </div>
@@ -830,7 +831,8 @@ const API = 'https://script.google.com/macros/s/AKfycbyK06VT9weMCjesdFYwDr2At00C
 let currentUser = null;     // {usuario, nombre, team, cliente, role}
 let allConsultas = [];       // loaded from API
 let allClientes = [];        // unique client names
-let planetFilter = 'Todos';  // current filter
+let planetFilter = 'Todos';  // current client filter
+let planetEstadoFilter = 'Todos'; // current estado filter
 
 // ── HELPERS ──
 function $(id) { return document.getElementById(id); }
@@ -1034,16 +1036,25 @@ function renderClientPlanet(consultas) {
     return;
   }
 
-  const activas = consultas.filter(c => c.estado !== 'Cerrado');
-  const respondidas = consultas.filter(c => c.estado === 'Respondido' || c.estado === 'Cerrado');
+  const activas = consultas.filter(c => c.estado !== 'Cerrado' && c.estado !== 'Respondido');
+  const respondidas = consultas.filter(c => c.estado === 'Respondido');
+  const cerradas = consultas.filter(c => c.estado === 'Cerrado');
 
   let html = '';
-  activas.forEach(c => {
-    html += renderClientConsultaCard(c, false, true);
-  });
+  if (activas.length > 0) {
+    activas.forEach(c => {
+      html += renderClientConsultaCard(c, false, true);
+    });
+  }
   if (respondidas.length > 0) {
-    html += '<div class="section-label" style="margin-top:20px;">Respondidas / Cerradas</div>';
+    html += '<div class="section-label" style="margin-top:20px;">Respondidas</div>';
     respondidas.forEach(c => {
+      html += renderClientConsultaCard(c, false, true);
+    });
+  }
+  if (cerradas.length > 0) {
+    html += '<div class="section-label" style="margin-top:20px;">Cerradas</div>';
+    cerradas.forEach(c => {
       html += renderClientConsultaCard(c, true, true);
     });
   }
@@ -1054,7 +1065,7 @@ function renderClientConsultaCard(c, dimmed, isPlanetQuery) {
   const msgs = c.mensajes || [];
   const canReply = c.estado !== 'Cerrado';
   const borderStyle = isPlanetQuery ? 'border-left: 3px solid var(--purple);' : '';
-  const dimStyle = dimmed ? 'opacity:0.65;' : '';
+  const dimStyle = dimmed ? 'opacity:0.7;' : '';
 
   let timelineHtml = '';
   msgs.forEach(m => {
@@ -1089,6 +1100,7 @@ function renderClientConsultaCard(c, dimmed, isPlanetQuery) {
         </div>
       </div>
       <div class="consulta-detail">${timelineHtml}</div>
+      ${!canReply && msgs.length > 0 ? `<div class="consulta-detail" style="padding-top:0;font-size:12px;color:var(--text-muted);font-style:italic;">📋 ${msgs.length} mensaje${msgs.length>1?'s':''} en historial</div>` : ''}
       ${replyHtml}
     </div>`;
 }
@@ -1192,11 +1204,15 @@ async function loadPlanetData() {
 
   allConsultas = res.consultas;
 
-  // Unique clients
-  allClientes = [...new Set(allConsultas.map(c => c.cliente))].sort();
+  // Unique clients from consultas (for filter chips)
+  allClientes = [...new Set(allConsultas.map(c => c.cliente))].filter(Boolean).sort();
 
-  // Populate client selector for new query
-  $('pnq-cliente').innerHTML = allClientes.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+  // Populate client selector for new query — use registered clients if available, else from consultas
+  const clienteOptions = allClientesData.length > 0 ? allClientesData.map(c => c.nombre).sort() : allClientes;
+  $('pnq-cliente').innerHTML = clienteOptions.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+
+  // Also preload registered clients for the dropdown
+  if (allClientesData.length === 0) preloadClients();
 
   // Recibidas = cliente_a_planet
   const recibidas = allConsultas.filter(c => c.direccion === 'cliente_a_planet');
@@ -1229,10 +1245,19 @@ async function loadPlanetData() {
     $('planet-alert').innerHTML = '';
   }
 
-  // Filter chips
+  // Estado filter chips
+  $('planet-estado-filter').innerHTML = `
+    <button class="client-chip ${planetEstadoFilter==='Todos'?'active':''}" onclick="setPlanetEstadoFilter('Todos',this)">Todos</button>
+    <button class="client-chip ${planetEstadoFilter==='Abierto'?'active':''}" onclick="setPlanetEstadoFilter('Abierto',this)" style="${planetEstadoFilter==='Abierto'?'':'border-color:var(--warning);color:var(--warning);'}">⏳ Abierto</button>
+    <button class="client-chip ${planetEstadoFilter==='En proceso'?'active':''}" onclick="setPlanetEstadoFilter('En proceso',this)" style="${planetEstadoFilter==='En proceso'?'':'border-color:var(--info);color:var(--info);'}">🔄 En proceso</button>
+    <button class="client-chip ${planetEstadoFilter==='Cerrado'?'active':''}" onclick="setPlanetEstadoFilter('Cerrado',this)" style="${planetEstadoFilter==='Cerrado'?'':'border-color:var(--closed);color:var(--closed);'}">✓ Cerrado</button>
+  `;
+
+  // Client filter chips — only show clients that have consultas
+  const clientesConConsultas = [...new Set(recibidas.map(c => c.cliente))].sort();
   $('planet-filter').innerHTML = `
     <button class="client-chip ${planetFilter==='Todos'?'active':''}" onclick="setPlanetFilter('Todos',this)">Todos</button>
-    ${allClientes.map(c => `<button class="client-chip ${planetFilter===c?'active':''}" onclick="setPlanetFilter('${esc(c)}',this)">${esc(c)}</button>`).join('')}
+    ${clientesConConsultas.map(c => `<button class="client-chip ${planetFilter===c?'active':''}" onclick="setPlanetFilter('${esc(c)}',this)">${esc(c)}</button>`).join('')}
   `;
 
   renderPlanetConsultas(recibidas);
@@ -1247,14 +1272,33 @@ function setPlanetFilter(f, btn) {
   renderPlanetConsultas(recibidas);
 }
 
+function setPlanetEstadoFilter(f, btn) {
+  planetEstadoFilter = f;
+  btn.closest('.client-filter').querySelectorAll('.client-chip').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const recibidas = allConsultas.filter(c => c.direccion === 'cliente_a_planet');
+  renderPlanetConsultas(recibidas);
+}
+
 function renderPlanetConsultas(consultas) {
   let filtered = consultas;
   if (planetFilter !== 'Todos') {
-    filtered = consultas.filter(c => c.cliente === planetFilter);
+    filtered = filtered.filter(c => c.cliente === planetFilter);
+  }
+  if (planetEstadoFilter !== 'Todos') {
+    filtered = filtered.filter(c => c.estado === planetEstadoFilter);
   }
 
   if (filtered.length === 0) {
-    $('planet-consultas-list').innerHTML = '<div class="empty-state"><p>No hay consultas</p></div>';
+    $('planet-consultas-list').innerHTML = '<div class="empty-state"><p>No hay consultas' + (planetFilter !== 'Todos' || planetEstadoFilter !== 'Todos' ? ' con ese filtro' : '') + '</p></div>';
+    return;
+  }
+
+  // If filtering by a specific estado, show flat list
+  if (planetEstadoFilter !== 'Todos') {
+    let html = '';
+    filtered.forEach(c => html += renderTicketCard(c));
+    $('planet-consultas-list').innerHTML = html;
     return;
   }
 
@@ -1313,9 +1357,9 @@ function renderTicketCard(c, isPlanetQuery) {
     ? '<span class="ticket-direction-tag dir-incoming">← Recibida</span>'
     : '<span class="ticket-direction-tag dir-outgoing">→ Enviada</span>';
 
-  // Thread for En proceso / Esperando / Respondido
+  // Thread — always show history, reply bar only if not closed
   let threadHtml = '';
-  if (c.estado !== 'Cerrado' && msgs.length > 0) {
+  if (msgs.length > 0) {
     threadHtml += '<div class="ticket-thread">';
     msgs.forEach(m => {
       const col = avatarColor(m.nombre || m.autor);
@@ -1331,12 +1375,14 @@ function renderTicketCard(c, isPlanetQuery) {
           </div>
         </div>`;
     });
-    // Reply bar
-    threadHtml += `
-      <div class="thread-reply-bar">
-        <input class="thread-reply-input" placeholder="Responder..." id="preply-${c.id}" onkeydown="if(event.key==='Enter')planetReply(${c.id})">
-        <button class="thread-reply-btn" onclick="planetReply(${c.id})">Enviar</button>
-      </div>`;
+    // Reply bar only if not closed
+    if (c.estado !== 'Cerrado') {
+      threadHtml += `
+        <div class="thread-reply-bar">
+          <input class="thread-reply-input" placeholder="Responder..." id="preply-${c.id}" onkeydown="if(event.key==='Enter')planetReply(${c.id})">
+          <button class="thread-reply-btn" onclick="planetReply(${c.id})">Enviar</button>
+        </div>`;
+    }
     threadHtml += '</div>';
   }
 
