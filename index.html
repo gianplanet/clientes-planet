@@ -826,7 +826,7 @@ body {
 
 <script>
 // ── CONFIG ──
-const API = 'https://script.google.com/macros/s/AKfycbyoh437W3VUxOuhNKj83hsL3GHQ90Fpd4YZdgMzpcMZ73-JBzzvTuHzzs68az8KR2xuUQ/exec';
+const API = 'https://script.google.com/macros/s/AKfycby0FMDtAd0j8bRVX8UVmYjuqrgp46f5QCmKbOwuiLHcPsfTLNkLppfjP9vLItq6mebeBA/exec';
 
 let currentUser = null;     // {usuario, nombre, team, cliente, role}
 let allConsultas = [];       // loaded from API
@@ -861,15 +861,34 @@ function avatarColor(name) {
   return colors[Math.abs(h) % colors.length];
 }
 
-async function api(params) {
-  const qs = new URLSearchParams(params).toString();
-  const url = API + '?' + qs;
-  try {
-    const r = await fetch(url);
-    return await r.json();
-  } catch (e) {
-    return { ok: false, error: 'Error de conexión: ' + e.message };
-  }
+let _jsonpId = 0;
+function api(params) {
+  return new Promise((resolve) => {
+    const cbName = '_planet_cb_' + (++_jsonpId);
+    params.callback = cbName;
+    const qs = new URLSearchParams(params).toString();
+    const url = API + '?' + qs;
+    const script = document.createElement('script');
+    const timeout = setTimeout(() => {
+      cleanup();
+      resolve({ ok: false, error: 'Timeout de conexión' });
+    }, 15000);
+    function cleanup() {
+      clearTimeout(timeout);
+      delete window[cbName];
+      if (script.parentNode) script.parentNode.removeChild(script);
+    }
+    window[cbName] = function(data) {
+      cleanup();
+      resolve(data);
+    };
+    script.src = url;
+    script.onerror = function() {
+      cleanup();
+      resolve({ ok: false, error: 'Error de conexión' });
+    };
+    document.head.appendChild(script);
+  });
 }
 
 // ── LOGIN ──
