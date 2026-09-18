@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Planet · Portal de Clientes</title>
+<link rel="icon" type="image/png" href="logo.png">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap">
 <style>
 :root {
@@ -36,6 +37,9 @@
   --purple: #7c3aed;
   --purple-bg: #f5f3ff;
   --purple-text: #5b21b6;
+  --wait: #0891b2;
+  --wait-bg: #ecfeff;
+  --wait-text: #155e75;
   --tab-bar-bg: #ffffff;
   --tab-bar-border: #e2e8f0;
   --overlay: rgba(15, 23, 42, 0.5);
@@ -59,6 +63,7 @@
     --info: #60a5fa; --info-bg: #1e3a5f; --info-text: #bfdbfe;
     --closed: #94a3b8; --closed-bg: #1e2433; --closed-text: #94a3b8;
     --purple: #a78bfa; --purple-bg: #2e1065; --purple-text: #c4b5fd;
+    --wait: #22d3ee; --wait-bg: #164e63; --wait-text: #a5f3fc;
     --tab-bar-bg: #151a24; --tab-bar-border: #2a3040;
     --overlay: rgba(0, 0, 0, 0.6);
     --shadow-sm: 0 1px 2px rgba(0,0,0,0.2);
@@ -77,6 +82,7 @@
   --info: #60a5fa; --info-bg: #1e3a5f; --info-text: #bfdbfe;
   --closed: #94a3b8; --closed-bg: #1e2433; --closed-text: #94a3b8;
   --purple: #a78bfa; --purple-bg: #2e1065; --purple-text: #c4b5fd;
+  --wait: #22d3ee; --wait-bg: #164e63; --wait-text: #a5f3fc;
   --tab-bar-bg: #151a24; --tab-bar-border: #2a3040;
   --overlay: rgba(0,0,0,0.6);
   --shadow-sm: 0 1px 2px rgba(0,0,0,0.2);
@@ -103,10 +109,13 @@ body {
   min-height: 100vh; padding: 40px 16px; max-width: 420px; margin: 0 auto;
 }
 .login-logo {
-  width: 56px; height: 56px; background: var(--primary); border-radius: 14px;
-  display: grid; place-items: center; margin-bottom: 20px;
+  width: 120px; height: 120px; object-fit: contain; margin-bottom: 14px;
+  background: #fff; border-radius: 28px; padding: 10px; box-shadow: var(--shadow-sm);
 }
-.login-logo svg { width: 30px; height: 30px; }
+.brand-logo {
+  width: 40px; height: 40px; object-fit: contain; flex-shrink: 0;
+  background: #fff; border-radius: 10px; padding: 3px; border: 1px solid var(--card-border);
+}
 .login-title { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
 .login-subtitle { font-size: 14px; color: var(--text-secondary); margin-bottom: 32px; }
 .login-form { width: 100%; max-width: 340px; display: flex; flex-direction: column; gap: 14px; }
@@ -174,7 +183,7 @@ body {
 .alert-banner strong { font-weight: 700; }
 
 /* ── STATS ROW ── */
-.stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 18px; }
+.stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); gap: 10px; margin-bottom: 18px; }
 .stat-card {
   background: var(--card); border: 1px solid var(--card-border);
   border-radius: var(--radius-sm); padding: 12px; text-align: center;
@@ -187,7 +196,7 @@ body {
 
 /* ── CLIENT FILTER (chips) ── */
 .client-filter {
-  display: flex; gap: 8px; margin-bottom: 16px;
+  display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px;
   overflow-x: auto; padding-bottom: 4px;
 }
 .client-filter::-webkit-scrollbar { display: none; }
@@ -207,10 +216,29 @@ body {
   letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 10px;
 }
 
+/* ── CARD SUMMARY (collapsed row, shared) ── */
+.card-summary { cursor: pointer; user-select: none; }
+.card-top { display: flex; align-items: center; gap: 8px; }
+.card-date { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.card-chevron {
+  margin-left: auto; width: 18px; height: 18px; flex-shrink: 0;
+  color: var(--text-muted); transition: transform 0.2s;
+}
+.open > .card-summary .card-chevron,
+.open .ticket-body > .card-summary .card-chevron { transform: rotate(180deg); }
+.card-asunto {
+  font-size: 14px; font-weight: 600; color: var(--text); margin-top: 6px;
+  line-height: 1.4; overflow-wrap: anywhere;
+}
+.card-sub { font-size: 12px; color: var(--text-muted); margin-top: 3px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+
 /* ── TICKET CARD (Planet desktop) ── */
+.ticket-details { display: none; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--card-border); }
+.ticket-card.open .ticket-details { display: block; }
+.ticket-details .ticket-thread { border-top: none; padding-top: 0; }
 .ticket-card {
   background: var(--card); border: 1px solid var(--card-border);
-  border-radius: var(--radius); padding: 14px 14px 14px 0;
+  border-radius: var(--radius); padding: 12px 14px 12px 0;
   margin-bottom: 10px; display: flex; gap: 12px;
   transition: box-shadow 0.15s, border-color 0.15s;
 }
@@ -221,6 +249,7 @@ body {
 .ticket-stripe.abierto { background: var(--warning); }
 .ticket-stripe.proceso { background: var(--info); }
 .ticket-stripe.cerrado { background: var(--closed); }
+.ticket-stripe.espera { background: var(--wait); }
 .ticket-stripe.urgent { background: var(--danger); }
 .ticket-stripe.planet-query { background: var(--purple); }
 
@@ -260,12 +289,13 @@ body {
 .status-Cerrado { background: var(--closed-bg); color: var(--closed-text); }
 .status-Respondido { background: var(--success-bg); color: var(--success-text); }
 .status-Esperando { background: var(--purple-bg); color: var(--purple-text); }
+.status-Esperando-info { background: var(--wait-bg); color: var(--wait-text); }
 
 .ticket-who { font-size: 12px; color: var(--text-muted); }
 
 /* ── STATUS ACTIONS ── */
 .status-actions {
-  display: flex; gap: 6px; margin-top: 10px; padding-top: 10px;
+  display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; padding-top: 10px;
   border-top: 1px solid var(--card-border);
 }
 .status-btn {
@@ -276,6 +306,7 @@ body {
 .status-btn:hover { border-color: var(--primary); color: var(--primary); }
 .status-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .status-btn.btn-proceso { border-color: var(--info); color: var(--info); background: var(--info-bg); }
+.status-btn.btn-espera { border-color: var(--wait); color: var(--wait); background: var(--wait-bg); }
 .status-btn.btn-cerrar { border-color: var(--success); color: var(--success); background: var(--success-bg); }
 
 /* ── THREAD / CONVERSATION ── */
@@ -317,10 +348,7 @@ body {
   background: var(--card); border: 1px solid var(--card-border);
   border-radius: var(--radius); overflow: hidden; margin-bottom: 10px;
 }
-.consulta-header {
-  padding: 12px 14px; display: flex; align-items: flex-start;
-  justify-content: space-between; cursor: pointer; gap: 8px;
-}
+.consulta-header { padding: 12px 14px; }
 .consulta-left { display: flex; align-items: flex-start; gap: 10px; flex: 1; min-width: 0; }
 .consulta-icon {
   width: 36px; height: 36px; border-radius: 50%;
@@ -336,7 +364,7 @@ body {
 .consulta-date { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
 .consulta-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
 .consulta-detail {
-  padding: 0 14px 14px 60px; font-size: 13px;
+  padding: 0 14px 14px 14px; font-size: 13px;
   color: var(--text-secondary); line-height: 1.5; display: none;
 }
 .consulta-card.open .consulta-detail { display: block; }
@@ -561,11 +589,7 @@ body {
 <!-- ═══ LOGIN SCREEN ═══ -->
 <div class="screen active" id="screen-login">
   <div class="login-wrap">
-    <div class="login-logo">
-      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
-      </svg>
-    </div>
+    <img class="login-logo" src="logo.png" alt="Planet">
     <div class="login-title">Planet</div>
     <div class="login-subtitle">Portal de Clientes</div>
     <div class="login-form">
@@ -588,6 +612,7 @@ body {
   <div class="mobile-frame">
     <div class="topbar" style="padding:14px 0;">
       <div class="topbar-left">
+        <img class="brand-logo" src="logo.png" alt="Planet">
         <div class="topbar-avatar" id="client-avatar" style="background:#d97706;">N</div>
         <div class="topbar-info">
           <h2 id="client-name">—</h2>
@@ -651,9 +676,19 @@ body {
       Nueva consulta
       <button class="modal-close" onclick="closeClientNewQuery()">✕</button>
     </div>
+    <div class="form-row">
+      <div class="field">
+        <label>Tracking *</label>
+        <input type="text" id="nq-tracking" placeholder="Ej: 152089">
+      </div>
+      <div class="field">
+        <label>N° de venta</label>
+        <input type="text" id="nq-venta" placeholder="Ej: 4521">
+      </div>
+    </div>
     <div class="field" style="margin-bottom:12px;">
-      <label>Asunto</label>
-      <input type="text" id="nq-asunto" placeholder="Ej: Envío #152089 — No entregado">
+      <label>Tipo de problema *</label>
+      <select id="nq-tipo" class="tipo-select"></select>
     </div>
     <div class="field" style="margin-bottom:12px;">
       <label>Mensaje</label>
@@ -668,6 +703,7 @@ body {
   <div class="desktop-frame">
     <div class="topbar">
       <div class="topbar-left">
+        <img class="brand-logo" src="logo.png" alt="Planet">
         <div class="topbar-avatar" id="planet-avatar" style="background:var(--primary);">G</div>
         <div class="topbar-info">
           <h2 id="planet-name">—</h2>
@@ -800,8 +836,18 @@ body {
                 <select id="pnq-cliente"></select>
               </div>
               <div class="field">
-                <label>Asunto</label>
-                <input type="text" id="pnq-asunto" placeholder="Ej: Confirmación de dirección">
+                <label>Tipo de problema *</label>
+                <select id="pnq-tipo" class="tipo-select"></select>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="field">
+                <label>Tracking *</label>
+                <input type="text" id="pnq-tracking" placeholder="Ej: 152089">
+              </div>
+              <div class="field">
+                <label>N° de venta</label>
+                <input type="text" id="pnq-venta" placeholder="Ej: 4521">
               </div>
             </div>
             <div class="field" style="margin-bottom:12px;">
@@ -944,6 +990,7 @@ function doLogout(sessionAlreadyInvalid) {
 
 // Try auto-login
 function tryAutoLogin() {
+  fillTipoSelects();
   try {
     const saved = localStorage.getItem('planet_user');
     if (saved) {
@@ -991,7 +1038,7 @@ async function loadClientData() {
   const enProceso = mis.filter(c => c.estado === 'En proceso').length;
   const cerradas = mis.filter(c => c.estado === 'Cerrado').length;
   $('client-stats').innerHTML = `
-    <div class="stat-card"><div class="stat-number" style="color:var(--warning)">${abiertas}</div><div class="stat-label">Abiertas</div></div>
+    <div class="stat-card"><div class="stat-number" style="color:var(--warning)">${abiertas}</div><div class="stat-label">Pendientes</div></div>
     <div class="stat-card"><div class="stat-number" style="color:var(--info)">${enProceso}</div><div class="stat-label">En proceso</div></div>
     <div class="stat-card"><div class="stat-number" style="color:var(--closed)">${cerradas}</div><div class="stat-label">Cerradas</div></div>
   `;
@@ -1037,6 +1084,59 @@ function iconClass(estado) {
   const map = { 'Abierto':'abierto-icon','En proceso':'proceso-icon','Cerrado':'cerrado-icon','Esperando':'esperando-icon','Respondido':'respondido-icon' };
   return map[estado] || 'abierto-icon';
 }
+
+// ── ASUNTO: tracking · venta · cliente · tipo de problema ──
+const TIPOS_PROBLEMA = [
+  'No entregado',
+  'Demora en la entrega',
+  'Dirección incorrecta / cambio de dirección',
+  'Reprogramar entrega',
+  'Paquete dañado',
+  'Paquete faltante / extraviado',
+  'Otro'
+];
+function fillTipoSelects() {
+  const html = '<option value="">-- Elegí el tipo de problema --</option>' +
+    TIPOS_PROBLEMA.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('');
+  document.querySelectorAll('.tipo-select').forEach(sel => { sel.innerHTML = html; });
+}
+function buildAsunto(tracking, venta, cliente, tipo) {
+  const parts = ['Tracking ' + tracking];
+  if (venta) parts.push('Venta ' + venta);
+  if (cliente) parts.push(cliente);
+  parts.push(tipo);
+  return parts.join(' · ');
+}
+
+// Consultas abiertas (desplegadas) — se mantienen al recargar
+const openCards = new Set();
+function toggleCard(elId) {
+  const el = $(elId);
+  if (!el) return;
+  el.classList.toggle('open');
+  if (el.classList.contains('open')) openCards.add(elId); else openCards.delete(elId);
+}
+function openClass(elId) { return openCards.has(elId) ? ' open' : ''; }
+
+const CHEVRON = '<svg class="card-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
+
+// Fecha y hora legible (dd/mm/aaaa hh:mm), aunque la hoja la devuelva como fecha ISO
+function fmtFecha(f) {
+  if (!f) return '';
+  const s = String(f);
+  if (/^\d{4}-\d{2}-\d{2}T/.test(s)) {
+    const d = new Date(s);
+    if (!isNaN(d)) {
+      const p = n => String(n).padStart(2, '0');
+      return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+    }
+  }
+  return s;
+}
+
+// Nombre que se muestra de cada estado (en la hoja sigue guardado igual)
+const ESTADO_LABEL = { 'Abierto': 'Pendiente' };
+function estadoLabel(estado) { return ESTADO_LABEL[estado] || estado; }
 
 function statusClass(estado) {
   return 'status-' + estado.replace(/ /g, '-');
@@ -1106,7 +1206,7 @@ function renderClientConsultaCard(c, dimmed, isPlanetQuery) {
     timelineHtml += `
       <div class="timeline-item">
         <span class="timeline-who">${esc(m.nombre)}</span>
-        <span class="timeline-time">${esc(m.fecha)}</span>
+        <span class="timeline-time">${esc(fmtFecha(m.fecha))}</span>
         <p>${esc(m.texto)}</p>
       </div>`;
   });
@@ -1120,18 +1220,14 @@ function renderClientConsultaCard(c, dimmed, isPlanetQuery) {
     </div>` : '';
 
   return `
-    <div class="consulta-card" style="${borderStyle}${dimStyle}" id="card-${c.id}">
-      <div class="consulta-header" onclick="document.getElementById('card-${c.id}').classList.toggle('open')">
-        <div class="consulta-left">
-          <div class="consulta-icon ${iconClass(c.estado)}">${consultaIcon(c.estado)}</div>
-          <div>
-            <div class="consulta-title">${esc(c.asunto)}</div>
-            <div class="consulta-date">${esc(c.fecha)}</div>
-          </div>
+    <div class="consulta-card${openClass('card-' + c.id)}" style="${borderStyle}${dimStyle}" id="card-${c.id}">
+      <div class="consulta-header card-summary" onclick="toggleCard('card-${c.id}')">
+        <div class="card-top">
+          <span class="ticket-status ${statusClass(c.estado)}">${esc(estadoLabel(c.estado))}</span>
+          <span class="card-date">${esc(fmtFecha(c.fecha))}</span>
+          ${CHEVRON}
         </div>
-        <div class="consulta-right">
-          <span class="ticket-status ${statusClass(c.estado)}">${esc(c.estado)}</span>
-        </div>
+        <div class="card-asunto">${esc(c.asunto)}</div>
       </div>
       <div class="consulta-detail">${timelineHtml}</div>
       ${!canReply && msgs.length > 0 ? `<div class="consulta-detail" style="padding-top:0;font-size:12px;color:var(--text-muted);font-style:italic;">📋 ${msgs.length} mensaje${msgs.length>1?'s':''} en historial</div>` : ''}
@@ -1166,7 +1262,9 @@ async function clientReply(id) {
 // ── CLIENT: New query ──
 function openClientNewQuery() {
   $('modal-new-query').classList.add('active');
-  $('nq-asunto').value = '';
+  $('nq-tracking').value = '';
+  $('nq-venta').value = '';
+  $('nq-tipo').value = '';
   $('nq-mensaje').value = '';
 }
 function closeClientNewQuery() {
@@ -1174,9 +1272,12 @@ function closeClientNewQuery() {
 }
 
 async function sendClientNewQuery() {
-  const asunto = $('nq-asunto').value.trim();
+  const tracking = $('nq-tracking').value.trim();
+  const venta = $('nq-venta').value.trim();
+  const tipo = $('nq-tipo').value;
   const mensaje = $('nq-mensaje').value.trim();
-  if (!asunto || !mensaje) { toast('Completá asunto y mensaje'); return; }
+  if (!tracking || !tipo || !mensaje) { toast('Completá tracking, tipo de problema y mensaje'); return; }
+  const asunto = buildAsunto(tracking, venta, currentUser.cliente, tipo);
 
   $('nq-send').disabled = true;
   $('nq-send').textContent = 'Enviando...';
@@ -1255,11 +1356,13 @@ async function loadPlanetData() {
   // Stats (recibidas)
   const abiertas = recibidas.filter(c => c.estado === 'Abierto').length;
   const enProceso = recibidas.filter(c => c.estado === 'En proceso').length;
+  const esperandoInfo = recibidas.filter(c => c.estado === 'Esperando info').length;
   const cerradas = recibidas.filter(c => c.estado === 'Cerrado').length;
 
   $('planet-stats').innerHTML = `
-    <div class="stat-card"><div class="stat-number" style="color:var(--warning)">${abiertas}</div><div class="stat-label">Abiertas</div></div>
+    <div class="stat-card"><div class="stat-number" style="color:var(--warning)">${abiertas}</div><div class="stat-label">Pendientes</div></div>
     <div class="stat-card"><div class="stat-number" style="color:var(--info)">${enProceso}</div><div class="stat-label">En proceso</div></div>
+    <div class="stat-card"><div class="stat-number" style="color:var(--wait)">${esperandoInfo}</div><div class="stat-label">Esperando info</div></div>
     <div class="stat-card"><div class="stat-number" style="color:var(--closed)">${cerradas}</div><div class="stat-label">Cerradas</div></div>
   `;
 
@@ -1273,7 +1376,7 @@ async function loadPlanetData() {
     $('planet-alert').innerHTML = `
       <div class="alert-banner alert-danger">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-        <span><strong>${abiertas} consulta${abiertas>1?'s':''} abierta${abiertas>1?'s':''}</strong> sin atender</span>
+        <span><strong>${abiertas} consulta${abiertas>1?'s':''} pendiente${abiertas>1?'s':''}</strong> sin atender</span>
       </div>`;
   } else {
     $('planet-alert').innerHTML = '';
@@ -1281,17 +1384,18 @@ async function loadPlanetData() {
 
   // Estado filter chips
   $('planet-estado-filter').innerHTML = `
-    <button class="client-chip ${planetEstadoFilter==='Todos'?'active':''}" onclick="setPlanetEstadoFilter('Todos',this)">Todos</button>
-    <button class="client-chip ${planetEstadoFilter==='Abierto'?'active':''}" onclick="setPlanetEstadoFilter('Abierto',this)" style="${planetEstadoFilter==='Abierto'?'':'border-color:var(--warning);color:var(--warning);'}">⏳ Abierto</button>
+    <button class="client-chip ${planetEstadoFilter==='Abierto'?'active':''}" onclick="setPlanetEstadoFilter('Abierto',this)" style="${planetEstadoFilter==='Abierto'?'':'border-color:var(--warning);color:var(--warning);'}">⏳ Pendiente</button>
     <button class="client-chip ${planetEstadoFilter==='En proceso'?'active':''}" onclick="setPlanetEstadoFilter('En proceso',this)" style="${planetEstadoFilter==='En proceso'?'':'border-color:var(--info);color:var(--info);'}">🔄 En proceso</button>
+    <button class="client-chip ${planetEstadoFilter==='Esperando info'?'active':''}" onclick="setPlanetEstadoFilter('Esperando info',this)" style="${planetEstadoFilter==='Esperando info'?'':'border-color:var(--wait);color:var(--wait);'}">💬 Esperando info</button>
     <button class="client-chip ${planetEstadoFilter==='Cerrado'?'active':''}" onclick="setPlanetEstadoFilter('Cerrado',this)" style="${planetEstadoFilter==='Cerrado'?'':'border-color:var(--closed);color:var(--closed);'}">✓ Cerrado</button>
+    <button class="client-chip ${planetEstadoFilter==='Todos'?'active':''}" onclick="setPlanetEstadoFilter('Todos',this)">Todos</button>
   `;
 
   // Client filter chips — only show clients that have consultas
   const clientesConConsultas = [...new Set(recibidas.map(c => c.cliente))].sort();
   $('planet-filter').innerHTML = `
-    <button class="client-chip ${planetFilter==='Todos'?'active':''}" onclick="setPlanetFilter('Todos',this)">Todos</button>
     ${clientesConConsultas.map(c => `<button class="client-chip ${planetFilter===c?'active':''}" onclick="setPlanetFilter('${esc(c)}',this)">${esc(c)}</button>`).join('')}
+    <button class="client-chip ${planetFilter==='Todos'?'active':''}" onclick="setPlanetFilter('Todos',this)">Todos</button>
   `;
 
   renderPlanetConsultas(recibidas);
@@ -1338,16 +1442,21 @@ function renderPlanetConsultas(consultas) {
 
   const abiertas = filtered.filter(c => c.estado === 'Abierto');
   const enProceso = filtered.filter(c => c.estado === 'En proceso');
+  const esperandoInfo = filtered.filter(c => c.estado === 'Esperando info');
   const cerradas = filtered.filter(c => c.estado === 'Cerrado');
 
   let html = '';
   if (abiertas.length > 0) {
-    html += '<div class="section-label" style="color:var(--danger)">Abiertas — requieren atención</div>';
+    html += '<div class="section-label" style="color:var(--danger)">Pendientes — requieren atención</div>';
     abiertas.forEach(c => html += renderTicketCard(c));
   }
   if (enProceso.length > 0) {
     html += '<div class="section-label" style="margin-top:20px;color:var(--info)">En proceso</div>';
     enProceso.forEach(c => html += renderTicketCard(c));
+  }
+  if (esperandoInfo.length > 0) {
+    html += '<div class="section-label" style="margin-top:20px;color:var(--wait)">Esperando info</div>';
+    esperandoInfo.forEach(c => html += renderTicketCard(c));
   }
   if (cerradas.length > 0) {
     html += '<div class="section-label" style="margin-top:20px;">Cerradas</div>';
@@ -1386,7 +1495,7 @@ function renderTicketCard(c, isPlanetQuery) {
   const msgs = c.mensajes || [];
   const lastMsg = msgs.length > 0 ? msgs[0].texto : c.asunto;
   const stripeClass = isPlanetQuery ? 'planet-query' :
-    (c.estado === 'Abierto' ? 'urgent' : (c.estado === 'En proceso' ? 'proceso' : 'cerrado'));
+    (c.estado === 'Abierto' ? 'urgent' : c.estado === 'En proceso' ? 'proceso' : c.estado === 'Esperando info' ? 'espera' : 'cerrado');
   const dirTag = c.direccion === 'cliente_a_planet'
     ? '<span class="ticket-direction-tag dir-incoming">← Recibida</span>'
     : '<span class="ticket-direction-tag dir-outgoing">→ Enviada</span>';
@@ -1403,7 +1512,7 @@ function renderTicketCard(c, isPlanetQuery) {
           <div class="thread-content">
             <div class="thread-meta">
               <span class="thread-name">${esc(m.nombre||m.autor)}</span>
-              <span class="thread-time">${esc(m.fecha)}</span>
+              <span class="thread-time">${esc(fmtFecha(m.fecha))}</span>
             </div>
             <div class="thread-text">${esc(m.texto)}</div>
           </div>
@@ -1422,36 +1531,57 @@ function renderTicketCard(c, isPlanetQuery) {
 
   // Action buttons
   let actionsHtml = '';
+  const pedirInfoBtn = !isPlanetQuery
+    ? `<button class="status-btn btn-espera" onclick="changeStatus(${c.id},'Esperando info')">Pedir info → Esperando info</button>` : '';
   if (c.estado === 'Abierto') {
     actionsHtml = `
       <div class="status-actions">
         <button class="status-btn btn-proceso" onclick="changeStatus(${c.id},'En proceso')">Tomar → En proceso</button>
+        ${pedirInfoBtn}
         <button class="status-btn btn-cerrar" onclick="changeStatus(${c.id},'Cerrado')">Cerrar</button>
       </div>`;
-  } else if (c.estado === 'En proceso' || c.estado === 'Respondido') {
+  } else if (c.estado === 'En proceso') {
+    actionsHtml = `
+      <div class="status-actions">
+        ${pedirInfoBtn}
+        <button class="status-btn btn-cerrar" onclick="changeStatus(${c.id},'Cerrado')">Cerrar</button>
+      </div>`;
+  } else if (c.estado === 'Esperando info') {
+    actionsHtml = `
+      <div class="status-actions">
+        <button class="status-btn btn-proceso" onclick="changeStatus(${c.id},'En proceso')">Retomar → En proceso</button>
+        <button class="status-btn btn-cerrar" onclick="changeStatus(${c.id},'Cerrado')">Cerrar</button>
+      </div>`;
+  } else if (c.estado === 'Respondido') {
     actionsHtml = `
       <div class="status-actions">
         <button class="status-btn btn-cerrar" onclick="changeStatus(${c.id},'Cerrado')">Cerrar</button>
       </div>`;
   }
 
+  const cardId = 'tcard-' + c.id;
   return `
-    <div class="ticket-card">
+    <div class="ticket-card${openClass(cardId)}" id="${cardId}">
       <div class="ticket-stripe ${stripeClass}"></div>
       <div class="ticket-body">
-        <div class="ticket-header">
-          <span class="ticket-tracking">#${c.id}</span>
-          <span class="ticket-client-tag tag-${c.cliente}">${esc(c.cliente)}</span>
-          ${dirTag}
-          <span class="ticket-datetime">${esc(c.fecha)}</span>
+        <div class="card-summary" onclick="toggleCard('${cardId}')">
+          <div class="card-top">
+            <span class="ticket-status ${statusClass(c.estado)}">${esc(estadoLabel(c.estado))}</span>
+            <span class="card-date">${esc(fmtFecha(c.fecha))}</span>
+            <span class="ticket-client-tag tag-${esc(c.cliente)}">${esc(c.cliente)}</span>
+            ${CHEVRON}
+          </div>
+          <div class="card-asunto">${esc(c.asunto)}</div>
         </div>
-        <div class="ticket-problem">${esc(c.asunto)}</div>
-        <div class="ticket-footer">
-          <span class="ticket-status ${statusClass(c.estado)}">${esc(c.estado)}</span>
-          <span class="ticket-who">${c.creado_por ? 'Crea: ' + esc(c.nombre_creador) : ''}${c.atendido_por ? ' · Atiende: ' + esc(c.atendido_por) : ''}</span>
+        <div class="ticket-details">
+          <div class="ticket-footer" style="margin-bottom:6px;">
+            <span class="ticket-tracking">#${c.id}</span>
+            ${dirTag}
+            <span class="ticket-who">${c.creado_por ? 'Crea: ' + esc(c.nombre_creador) : ''}${c.atendido_por ? ' · Atiende: ' + esc(c.atendido_por) : ''}</span>
+          </div>
+          ${threadHtml}
+          ${actionsHtml}
         </div>
-        ${actionsHtml}
-        ${threadHtml}
       </div>
     </div>`;
 }
@@ -1491,7 +1621,7 @@ async function changeStatus(id, estado) {
     atendido_por: currentUser.nombre
   });
   if (res.ok) {
-    toast('Estado cambiado a ' + estado);
+    toast('Estado cambiado a ' + estadoLabel(estado));
     loadPlanetData();
   } else {
     toast('Error: ' + (res.error || 'No se pudo cambiar'));
@@ -1500,9 +1630,12 @@ async function changeStatus(id, estado) {
 
 async function sendPlanetNewQuery() {
   const cliente = $('pnq-cliente').value;
-  const asunto = $('pnq-asunto').value.trim();
+  const tracking = $('pnq-tracking').value.trim();
+  const venta = $('pnq-venta').value.trim();
+  const tipo = $('pnq-tipo').value;
   const mensaje = $('pnq-mensaje').value.trim();
-  if (!asunto || !mensaje || !cliente) { toast('Completá todos los campos'); return; }
+  if (!tracking || !tipo || !mensaje || !cliente) { toast('Completá tracking, tipo de problema y mensaje'); return; }
+  const asunto = buildAsunto(tracking, venta, cliente, tipo);
 
   $('pnq-send').disabled = true;
 
@@ -1519,7 +1652,9 @@ async function sendPlanetNewQuery() {
   $('pnq-send').disabled = false;
 
   if (res.ok) {
-    $('pnq-asunto').value = '';
+    $('pnq-tracking').value = '';
+    $('pnq-venta').value = '';
+    $('pnq-tipo').value = '';
     $('pnq-mensaje').value = '';
     toast('Consulta #' + res.id + ' enviada a ' + cliente);
     planetNav(document.querySelector('.sidebar-item'), 'planet-enviadas');
