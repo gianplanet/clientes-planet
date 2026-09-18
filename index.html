@@ -866,6 +866,7 @@ function api(params) {
   return new Promise((resolve) => {
     const cbName = '_planet_cb_' + (++_jsonpId);
     params.callback = cbName;
+    if (currentUser && currentUser.token && !params.token) params.token = currentUser.token;
     const qs = new URLSearchParams(params).toString();
     const url = API + '?' + qs;
     const script = document.createElement('script');
@@ -880,6 +881,11 @@ function api(params) {
     }
     window[cbName] = function(data) {
       cleanup();
+      // Sesión vencida o inválida: volver al login
+      if (data && data.auth === false && currentUser) {
+        doLogout(true);
+        toast(data.error || 'Sesión vencida, ingresá de nuevo');
+      }
       resolve(data);
     };
     script.src = url;
@@ -915,7 +921,7 @@ async function doLogin() {
   }
 
   currentUser = res.user;
-  currentUser._pass = pass;
+  currentUser.token = res.token;
   try { localStorage.setItem('planet_user', JSON.stringify(currentUser)); } catch(e) {}
 
   if (currentUser.team === 'planet') {
@@ -925,7 +931,10 @@ async function doLogin() {
   }
 }
 
-function doLogout() {
+function doLogout(sessionAlreadyInvalid) {
+  if (currentUser && currentUser.token && sessionAlreadyInvalid !== true) {
+    api({ action: 'logout', token: currentUser.token });
+  }
   currentUser = null;
   try { localStorage.removeItem('planet_user'); } catch(e) {}
   $('login-user').value = '';
@@ -939,6 +948,12 @@ function tryAutoLogin() {
     const saved = localStorage.getItem('planet_user');
     if (saved) {
       currentUser = JSON.parse(saved);
+      // Sesiones guardadas antes del sistema de tokens: pedir login de nuevo
+      if (!currentUser || !currentUser.token) {
+        currentUser = null;
+        localStorage.removeItem('planet_user');
+        return;
+      }
       if (currentUser.team === 'planet') initPlanetView();
       else initClientView();
     }
