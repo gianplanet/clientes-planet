@@ -290,6 +290,13 @@ body {
 .status-Respondido { background: var(--success-bg); color: var(--success-text); }
 .status-Esperando { background: var(--purple-bg); color: var(--purple-text); }
 .status-Esperando-info { background: var(--wait-bg); color: var(--wait-text); }
+.tag-respondio {
+  font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 10px;
+  background: var(--success-bg); color: var(--success-text); white-space: nowrap;
+}
+.thread-reply-btn.btn-wait { background: var(--wait); color: var(--surface); }
+.consulta-card.needs-reply { border-left: 3px solid var(--wait); }
+.alert-banner.alert-wait { background: var(--wait-bg); color: var(--wait-text); border: 1px solid var(--wait); }
 
 .ticket-who { font-size: 12px; color: var(--text-muted); }
 
@@ -631,7 +638,9 @@ body {
 
     <!-- SUBTABS -->
     <div class="subtab-bar">
-      <button class="subtab active" onclick="clientSubtab(this,'client-mis')">Mis consultas</button>
+      <button class="subtab active" onclick="clientSubtab(this,'client-mis')">
+        Mis consultas <span class="subtab-badge" id="client-mis-badge" hidden>0</span>
+      </button>
       <button class="subtab" onclick="clientSubtab(this,'client-planet')">
         De Planet <span class="subtab-badge" id="client-planet-badge" hidden>0</span>
       </button>
@@ -639,6 +648,7 @@ body {
 
     <!-- SUB: Mis consultas -->
     <div class="client-sub active" id="client-mis">
+      <div id="client-mis-alert"></div>
       <div class="stats-row" id="client-stats"></div>
       <div id="client-mis-list"></div>
     </div>
@@ -1027,62 +1037,47 @@ async function loadClientData() {
     return;
   }
 
-  const consultas = res.consultas;
+  const consultas = normEstados(res.consultas);
 
   // Split: mis consultas (cliente→planet) vs de planet (planet→cliente)
   const mis = consultas.filter(c => c.direccion === 'cliente_a_planet');
   const dePlanet = consultas.filter(c => c.direccion === 'planet_a_cliente');
 
   // Stats
-  const abiertas = mis.filter(c => c.estado === 'Abierto').length;
-  const enProceso = mis.filter(c => c.estado === 'En proceso').length;
-  const cerradas = mis.filter(c => c.estado === 'Cerrado').length;
+  const cuenta = (list, g) => list.filter(c => grupoCliente(c.estado) === g).length;
+  const esperanMis = cuenta(mis, 'espera');
   $('client-stats').innerHTML = `
-    <div class="stat-card"><div class="stat-number" style="color:var(--warning)">${abiertas}</div><div class="stat-label">Pendientes</div></div>
-    <div class="stat-card"><div class="stat-number" style="color:var(--info)">${enProceso}</div><div class="stat-label">En proceso</div></div>
-    <div class="stat-card"><div class="stat-number" style="color:var(--closed)">${cerradas}</div><div class="stat-label">Cerradas</div></div>
+    <div class="stat-card"><div class="stat-number" style="color:var(--warning)">${cuenta(mis,'pendiente')}</div><div class="stat-label">Pendientes</div></div>
+    <div class="stat-card"><div class="stat-number" style="color:var(--info)">${cuenta(mis,'proceso')}</div><div class="stat-label">En proceso</div></div>
+    <div class="stat-card"><div class="stat-number" style="color:var(--wait)">${esperanMis}</div><div class="stat-label">Esperan tu respuesta</div></div>
+    <div class="stat-card"><div class="stat-number" style="color:var(--closed)">${cuenta(mis,'cerrado')}</div><div class="stat-label">Cerradas</div></div>
   `;
 
-  // Badge "De Planet"
-  const esperando = dePlanet.filter(c => c.estado === 'Esperando').length;
-  const badge = $('client-planet-badge');
-  if (esperando > 0) {
-    badge.textContent = esperando;
-    badge.hidden = false;
-  } else {
-    badge.hidden = true;
-  }
+  // Badges de las pestañas: consultas que esperan respuesta del cliente
+  setBadge('client-mis-badge', esperanMis);
+  const esperanPlanet = cuenta(dePlanet, 'espera');
+  setBadge('client-planet-badge', esperanPlanet);
 
-  // Render mis consultas
-  renderClientMis(mis);
+  $('client-mis-alert').innerHTML = esperanMis > 0 ? alertEsperan(`Planet necesita info tuya en <strong>${esperanMis} consulta${esperanMis>1?'s':''}</strong>`) : '';
+  $('client-planet-alert').innerHTML = esperanPlanet > 0 ? alertEsperan(`Planet te hizo <strong>${esperanPlanet} consulta${esperanPlanet>1?'s':''}</strong> que espera${esperanPlanet>1?'n':''} tu respuesta`) : '';
 
-  // Planet alert + list
-  if (esperando > 0) {
-    $('client-planet-alert').innerHTML = `
-      <div class="alert-banner alert-info">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-        <span><strong>${esperando} consulta${esperando>1?'s':''} de Planet</strong> espera${esperando>1?'n':''} tu respuesta</span>
-      </div>`;
-  } else {
-    $('client-planet-alert').innerHTML = '';
-  }
-  renderClientPlanet(dePlanet);
+  renderClientList(mis, 'client-mis-list', false, 'No tenés consultas todavía');
+  renderClientList(dePlanet, 'client-planet-list', true, 'No hay consultas de Planet');
 }
 
-function consultaIcon(estado) {
-  const icons = {
-    'Abierto': '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>',
-    'En proceso': '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>',
-    'Cerrado': '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/></svg>',
-    'Esperando': '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>',
-    'Respondido': '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/></svg>',
-  };
-  return icons[estado] || icons['Abierto'];
+function setBadge(id, n) {
+  const b = $(id);
+  if (!b) return;
+  b.textContent = n;
+  b.hidden = !(n > 0);
 }
 
-function iconClass(estado) {
-  const map = { 'Abierto':'abierto-icon','En proceso':'proceso-icon','Cerrado':'cerrado-icon','Esperando':'esperando-icon','Respondido':'respondido-icon' };
-  return map[estado] || 'abierto-icon';
+function alertEsperan(texto) {
+  return `
+    <div class="alert-banner alert-wait">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+      <span>${texto}</span>
+    </div>`;
 }
 
 // ── ASUNTO: tracking · venta · cliente · tipo de problema ──
@@ -1134,71 +1129,72 @@ function fmtFecha(f) {
   return s;
 }
 
-// Nombre que se muestra de cada estado (en la hoja sigue guardado igual)
-const ESTADO_LABEL = { 'Abierto': 'Pendiente' };
-function estadoLabel(estado) { return ESTADO_LABEL[estado] || estado; }
-
-function statusClass(estado) {
-  return 'status-' + estado.replace(/ /g, '-');
+// ── ESTADOS Y FLUJO ──
+// En la hoja se guarda un solo estado; cada lado (Planet / cliente) lo ve con su propio nombre.
+//   Abierto            → Planet: Pendiente       · Cliente: Pendiente
+//   En proceso         → Planet: En proceso      · Cliente: En proceso
+//   Esperando info     → Planet: Esperando info  · Cliente: Esperando tu respuesta
+//   Respuesta cliente  → Planet: Pendiente       · Cliente: En proceso
+//   Cerrado            → los dos: Cerrado
+const ESTADOS_VIEJOS = { 'Esperando': 'Esperando info', 'Respondido': 'Respuesta cliente' };
+function normEstados(list) {
+  (list || []).forEach(c => { c.estado = ESTADOS_VIEJOS[c.estado] || c.estado || 'Abierto'; });
+  return list || [];
 }
 
-function renderClientMis(consultas) {
-  if (consultas.length === 0) {
-    $('client-mis-list').innerHTML = '<div class="empty-state"><p>No tenés consultas todavía</p></div>';
-    return;
-  }
-
-  // Separate by status
-  const activas = consultas.filter(c => c.estado !== 'Cerrado');
-  const cerradas = consultas.filter(c => c.estado === 'Cerrado');
-
-  let html = '';
-  if (activas.length > 0) {
-    html += '<div class="section-label">Consultas activas</div>';
-    activas.forEach(c => { html += renderClientConsultaCard(c, false); });
-  }
-  if (cerradas.length > 0) {
-    html += '<div class="section-label" style="margin-top:20px;">Cerradas</div>';
-    cerradas.forEach(c => { html += renderClientConsultaCard(c, true); });
-  }
-  $('client-mis-list').innerHTML = html;
+const GRUPOS = {
+  pendiente: { label: 'Pendiente',      cls: 'status-Abierto',        stripe: 'urgent',  color: 'var(--warning)' },
+  proceso:   { label: 'En proceso',     cls: 'status-En-proceso',     stripe: 'proceso', color: 'var(--info)' },
+  espera:    { label: 'Esperando info', cls: 'status-Esperando-info', stripe: 'espera',  color: 'var(--wait)' },
+  cerrado:   { label: 'Cerrado',        cls: 'status-Cerrado',        stripe: 'cerrado', color: 'var(--closed)' }
+};
+function grupoPlanet(estado) {
+  if (estado === 'Abierto' || estado === 'Respuesta cliente') return 'pendiente';
+  if (estado === 'En proceso') return 'proceso';
+  if (estado === 'Esperando info') return 'espera';
+  if (estado === 'Cerrado') return 'cerrado';
+  return 'pendiente';
 }
+function grupoCliente(estado) {
+  if (estado === 'Abierto') return 'pendiente';
+  if (estado === 'En proceso' || estado === 'Respuesta cliente') return 'proceso';
+  if (estado === 'Esperando info') return 'espera';
+  if (estado === 'Cerrado') return 'cerrado';
+  return 'pendiente';
+}
+function badgeEstado(grupo, paraCliente) {
+  const g = GRUPOS[grupo];
+  const label = (paraCliente && grupo === 'espera') ? 'Esperando tu respuesta' : g.label;
+  return `<span class="ticket-status ${g.cls}">${esc(label)}</span>`;
+}
+function estadoLabel(estado) { return GRUPOS[grupoPlanet(estado)].label; }
 
-function renderClientPlanet(consultas) {
+function renderClientList(consultas, containerId, isPlanetQuery, vacio) {
   if (consultas.length === 0) {
-    $('client-planet-list').innerHTML = '<div class="empty-state"><p>No hay consultas de Planet</p></div>';
+    $(containerId).innerHTML = `<div class="empty-state"><p>${vacio}</p></div>`;
     return;
   }
-
-  const activas = consultas.filter(c => c.estado !== 'Cerrado' && c.estado !== 'Respondido');
-  const respondidas = consultas.filter(c => c.estado === 'Respondido');
-  const cerradas = consultas.filter(c => c.estado === 'Cerrado');
+  const esperan = consultas.filter(c => grupoCliente(c.estado) === 'espera');
+  const activas = consultas.filter(c => ['pendiente','proceso'].includes(grupoCliente(c.estado)));
+  const cerradas = consultas.filter(c => grupoCliente(c.estado) === 'cerrado');
 
   let html = '';
-  if (activas.length > 0) {
-    activas.forEach(c => {
-      html += renderClientConsultaCard(c, false, true);
-    });
-  }
-  if (respondidas.length > 0) {
-    html += '<div class="section-label" style="margin-top:20px;">Respondidas</div>';
-    respondidas.forEach(c => {
-      html += renderClientConsultaCard(c, false, true);
-    });
-  }
-  if (cerradas.length > 0) {
-    html += '<div class="section-label" style="margin-top:20px;">Cerradas</div>';
-    cerradas.forEach(c => {
-      html += renderClientConsultaCard(c, true, true);
-    });
-  }
-  $('client-planet-list').innerHTML = html;
+  const seccion = (titulo, list, color, dimmed) => {
+    if (list.length === 0) return;
+    html += `<div class="section-label" style="${html ? 'margin-top:20px;' : ''}${color ? 'color:' + color : ''}">${titulo}</div>`;
+    list.forEach(c => { html += renderClientConsultaCard(c, dimmed, isPlanetQuery); });
+  };
+  seccion('Esperan tu respuesta', esperan, 'var(--wait)', false);
+  seccion('Consultas activas', activas, '', false);
+  seccion('Cerradas', cerradas, '', true);
+  $(containerId).innerHTML = html;
 }
 
 function renderClientConsultaCard(c, dimmed, isPlanetQuery) {
   const msgs = c.mensajes || [];
-  const canReply = c.estado !== 'Cerrado';
-  const borderStyle = isPlanetQuery ? 'border-left: 3px solid var(--purple);' : '';
+  const grupo = grupoCliente(c.estado);
+  const canReply = grupo !== 'cerrado';
+  const borderStyle = (isPlanetQuery && grupo !== 'espera') ? 'border-left: 3px solid var(--purple);' : '';
   const dimStyle = dimmed ? 'opacity:0.7;' : '';
 
   let timelineHtml = '';
@@ -1213,17 +1209,17 @@ function renderClientConsultaCard(c, dimmed, isPlanetQuery) {
 
   const replyHtml = canReply ? `
     <div class="reply-box">
-      <input type="text" placeholder="Responder..." id="reply-${c.id}" onkeydown="if(event.key==='Enter')clientReply(${c.id})">
+      <input type="text" placeholder="${grupo === 'espera' ? 'Escribí la info que pide Planet...' : 'Responder...'}" id="reply-${c.id}" onkeydown="if(event.key==='Enter')clientReply(${c.id})">
       <button class="reply-send" onclick="clientReply(${c.id})" title="Enviar">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
       </button>
     </div>` : '';
 
   return `
-    <div class="consulta-card${openClass('card-' + c.id)}" style="${borderStyle}${dimStyle}" id="card-${c.id}">
+    <div class="consulta-card${grupo === 'espera' ? ' needs-reply' : ''}${openClass('card-' + c.id)}" style="${borderStyle}${dimStyle}" id="card-${c.id}">
       <div class="consulta-header card-summary" onclick="toggleCard('card-${c.id}')">
         <div class="card-top">
-          <span class="ticket-status ${statusClass(c.estado)}">${esc(estadoLabel(c.estado))}</span>
+          ${badgeEstado(grupo, true)}
           <span class="card-date">${esc(fmtFecha(c.fecha))}</span>
           ${CHEVRON}
         </div>
@@ -1337,7 +1333,7 @@ async function loadPlanetData() {
     return;
   }
 
-  allConsultas = res.consultas;
+  allConsultas = normEstados(res.consultas);
 
   // Unique clients from consultas (for filter chips)
   allClientes = [...new Set(allConsultas.map(c => c.cliente))].filter(Boolean).sort();
@@ -1354,40 +1350,38 @@ async function loadPlanetData() {
   const enviadas = allConsultas.filter(c => c.direccion === 'planet_a_cliente');
 
   // Stats (recibidas)
-  const abiertas = recibidas.filter(c => c.estado === 'Abierto').length;
-  const enProceso = recibidas.filter(c => c.estado === 'En proceso').length;
-  const esperandoInfo = recibidas.filter(c => c.estado === 'Esperando info').length;
-  const cerradas = recibidas.filter(c => c.estado === 'Cerrado').length;
+  const cuenta = (list, g) => list.filter(c => grupoPlanet(c.estado) === g).length;
+  const pendientes = cuenta(recibidas, 'pendiente');
+  const enProceso = cuenta(recibidas, 'proceso');
 
-  $('planet-stats').innerHTML = `
-    <div class="stat-card"><div class="stat-number" style="color:var(--warning)">${abiertas}</div><div class="stat-label">Pendientes</div></div>
-    <div class="stat-card"><div class="stat-number" style="color:var(--info)">${enProceso}</div><div class="stat-label">En proceso</div></div>
-    <div class="stat-card"><div class="stat-number" style="color:var(--wait)">${esperandoInfo}</div><div class="stat-label">Esperando info</div></div>
-    <div class="stat-card"><div class="stat-number" style="color:var(--closed)">${cerradas}</div><div class="stat-label">Cerradas</div></div>
-  `;
+  $('planet-stats').innerHTML = ['pendiente','proceso','espera','cerrado'].map(g => `
+    <div class="stat-card"><div class="stat-number" style="color:${GRUPOS[g].color}">${cuenta(recibidas, g)}</div><div class="stat-label">${g === 'pendiente' ? 'Pendientes' : g === 'cerrado' ? 'Cerradas' : GRUPOS[g].label}</div></div>`).join('');
 
-  // Sidebar badges
-  $('sb-consultas').textContent = abiertas + enProceso;
-  const esperando = enviadas.filter(c => c.estado === 'Esperando').length;
-  $('sb-enviadas').textContent = esperando;
+  // Sidebar badges: lo que requiere atención de Planet
+  $('sb-consultas').textContent = pendientes + enProceso;
+  $('sb-enviadas').textContent = cuenta(enviadas, 'pendiente');
 
   // Alert
-  if (abiertas > 0) {
+  if (pendientes > 0) {
     $('planet-alert').innerHTML = `
       <div class="alert-banner alert-danger">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-        <span><strong>${abiertas} consulta${abiertas>1?'s':''} pendiente${abiertas>1?'s':''}</strong> sin atender</span>
+        <span><strong>${pendientes} consulta${pendientes>1?'s':''} pendiente${pendientes>1?'s':''}</strong> sin atender</span>
       </div>`;
   } else {
     $('planet-alert').innerHTML = '';
   }
 
-  // Estado filter chips
+  // Estado filter chips (Todos al final)
+  const chip = (g, icono) => {
+    const act = planetEstadoFilter === g;
+    return `<button class="client-chip ${act?'active':''}" onclick="setPlanetEstadoFilter('${g}',this)" style="${act?'':'border-color:'+GRUPOS[g].color+';color:'+GRUPOS[g].color+';'}">${icono} ${GRUPOS[g].label}</button>`;
+  };
   $('planet-estado-filter').innerHTML = `
-    <button class="client-chip ${planetEstadoFilter==='Abierto'?'active':''}" onclick="setPlanetEstadoFilter('Abierto',this)" style="${planetEstadoFilter==='Abierto'?'':'border-color:var(--warning);color:var(--warning);'}">⏳ Pendiente</button>
-    <button class="client-chip ${planetEstadoFilter==='En proceso'?'active':''}" onclick="setPlanetEstadoFilter('En proceso',this)" style="${planetEstadoFilter==='En proceso'?'':'border-color:var(--info);color:var(--info);'}">🔄 En proceso</button>
-    <button class="client-chip ${planetEstadoFilter==='Esperando info'?'active':''}" onclick="setPlanetEstadoFilter('Esperando info',this)" style="${planetEstadoFilter==='Esperando info'?'':'border-color:var(--wait);color:var(--wait);'}">💬 Esperando info</button>
-    <button class="client-chip ${planetEstadoFilter==='Cerrado'?'active':''}" onclick="setPlanetEstadoFilter('Cerrado',this)" style="${planetEstadoFilter==='Cerrado'?'':'border-color:var(--closed);color:var(--closed);'}">✓ Cerrado</button>
+    ${chip('pendiente','⏳')}
+    ${chip('proceso','🔄')}
+    ${chip('espera','💬')}
+    ${chip('cerrado','✓')}
     <button class="client-chip ${planetEstadoFilter==='Todos'?'active':''}" onclick="setPlanetEstadoFilter('Todos',this)">Todos</button>
   `;
 
@@ -1424,45 +1418,14 @@ function renderPlanetConsultas(consultas) {
     filtered = filtered.filter(c => c.cliente === planetFilter);
   }
   if (planetEstadoFilter !== 'Todos') {
-    filtered = filtered.filter(c => c.estado === planetEstadoFilter);
+    filtered = filtered.filter(c => grupoPlanet(c.estado) === planetEstadoFilter);
   }
 
   if (filtered.length === 0) {
     $('planet-consultas-list').innerHTML = '<div class="empty-state"><p>No hay consultas' + (planetFilter !== 'Todos' || planetEstadoFilter !== 'Todos' ? ' con ese filtro' : '') + '</p></div>';
     return;
   }
-
-  // If filtering by a specific estado, show flat list
-  if (planetEstadoFilter !== 'Todos') {
-    let html = '';
-    filtered.forEach(c => html += renderTicketCard(c));
-    $('planet-consultas-list').innerHTML = html;
-    return;
-  }
-
-  const abiertas = filtered.filter(c => c.estado === 'Abierto');
-  const enProceso = filtered.filter(c => c.estado === 'En proceso');
-  const esperandoInfo = filtered.filter(c => c.estado === 'Esperando info');
-  const cerradas = filtered.filter(c => c.estado === 'Cerrado');
-
-  let html = '';
-  if (abiertas.length > 0) {
-    html += '<div class="section-label" style="color:var(--danger)">Pendientes — requieren atención</div>';
-    abiertas.forEach(c => html += renderTicketCard(c));
-  }
-  if (enProceso.length > 0) {
-    html += '<div class="section-label" style="margin-top:20px;color:var(--info)">En proceso</div>';
-    enProceso.forEach(c => html += renderTicketCard(c));
-  }
-  if (esperandoInfo.length > 0) {
-    html += '<div class="section-label" style="margin-top:20px;color:var(--wait)">Esperando info</div>';
-    esperandoInfo.forEach(c => html += renderTicketCard(c));
-  }
-  if (cerradas.length > 0) {
-    html += '<div class="section-label" style="margin-top:20px;">Cerradas</div>';
-    cerradas.forEach(c => html += renderTicketCard(c));
-  }
-  $('planet-consultas-list').innerHTML = html;
+  $('planet-consultas-list').innerHTML = renderPlanetGrupos(filtered, false);
 }
 
 function renderPlanetEnviadas(consultas) {
@@ -1470,32 +1433,32 @@ function renderPlanetEnviadas(consultas) {
     $('planet-enviadas-list').innerHTML = '<div class="empty-state"><p>No hay consultas enviadas</p></div>';
     return;
   }
+  $('planet-enviadas-list').innerHTML = renderPlanetGrupos(consultas, true);
+}
 
-  const esperando = consultas.filter(c => c.estado === 'Esperando');
-  const respondidas = consultas.filter(c => c.estado === 'Respondido');
-  const cerradas = consultas.filter(c => c.estado === 'Cerrado');
-
+// Lista agrupada: Pendientes → En proceso → Esperando info → Cerradas
+function renderPlanetGrupos(consultas, isPlanetQuery) {
+  const titulos = {
+    pendiente: 'Pendientes — requieren atención',
+    proceso: 'En proceso',
+    espera: isPlanetQuery ? 'Esperando respuesta del cliente' : 'Esperando info del cliente',
+    cerrado: 'Cerradas'
+  };
   let html = '';
-  if (esperando.length > 0) {
-    html += '<div class="section-label" style="color:var(--purple)">Esperando respuesta del cliente</div>';
-    esperando.forEach(c => html += renderTicketCard(c, true));
-  }
-  if (respondidas.length > 0) {
-    html += '<div class="section-label" style="margin-top:20px;color:var(--success)">Respondidas</div>';
-    respondidas.forEach(c => html += renderTicketCard(c, true));
-  }
-  if (cerradas.length > 0) {
-    html += '<div class="section-label" style="margin-top:20px;">Cerradas</div>';
-    cerradas.forEach(c => html += renderTicketCard(c, true));
-  }
-  $('planet-enviadas-list').innerHTML = html;
+  ['pendiente','proceso','espera','cerrado'].forEach(g => {
+    const list = consultas.filter(c => grupoPlanet(c.estado) === g);
+    if (list.length === 0) return;
+    const color = g === 'pendiente' ? 'var(--danger)' : g === 'cerrado' ? '' : GRUPOS[g].color;
+    html += `<div class="section-label" style="${html ? 'margin-top:20px;' : ''}${color ? 'color:' + color : ''}">${titulos[g]}</div>`;
+    list.forEach(c => html += renderTicketCard(c, isPlanetQuery));
+  });
+  return html;
 }
 
 function renderTicketCard(c, isPlanetQuery) {
   const msgs = c.mensajes || [];
-  const lastMsg = msgs.length > 0 ? msgs[0].texto : c.asunto;
-  const stripeClass = isPlanetQuery ? 'planet-query' :
-    (c.estado === 'Abierto' ? 'urgent' : c.estado === 'En proceso' ? 'proceso' : c.estado === 'Esperando info' ? 'espera' : 'cerrado');
+  const grupo = grupoPlanet(c.estado);
+  const stripeClass = GRUPOS[grupo].stripe;
   const dirTag = c.direccion === 'cliente_a_planet'
     ? '<span class="ticket-direction-tag dir-incoming">← Recibida</span>'
     : '<span class="ticket-direction-tag dir-outgoing">→ Enviada</span>';
@@ -1519,11 +1482,12 @@ function renderTicketCard(c, isPlanetQuery) {
         </div>`;
     });
     // Reply bar only if not closed
-    if (c.estado !== 'Cerrado') {
+    if (grupo !== 'cerrado') {
       threadHtml += `
         <div class="thread-reply-bar">
-          <input class="thread-reply-input" placeholder="Responder..." id="preply-${c.id}" onkeydown="if(event.key==='Enter')planetReply(${c.id})">
-          <button class="thread-reply-btn" onclick="planetReply(${c.id})">Enviar</button>
+          <input class="thread-reply-input" placeholder="Responder..." id="preply-${c.id}" onkeydown="if(event.key==='Enter')planetReply(${c.id}, false)">
+          <button class="thread-reply-btn" onclick="planetReply(${c.id}, false)" title="Envía el mensaje; la consulta queda En proceso">Enviar</button>
+          <button class="thread-reply-btn btn-wait" onclick="planetReply(${c.id}, true)" title="Envía el mensaje y pasa la consulta a Esperando info">Enviar y pedir info</button>
         </div>`;
     }
     threadHtml += '</div>';
@@ -1531,30 +1495,21 @@ function renderTicketCard(c, isPlanetQuery) {
 
   // Action buttons
   let actionsHtml = '';
-  const pedirInfoBtn = !isPlanetQuery
-    ? `<button class="status-btn btn-espera" onclick="changeStatus(${c.id},'Esperando info')">Pedir info → Esperando info</button>` : '';
-  if (c.estado === 'Abierto') {
+  if (grupo === 'pendiente') {
     actionsHtml = `
       <div class="status-actions">
         <button class="status-btn btn-proceso" onclick="changeStatus(${c.id},'En proceso')">Tomar → En proceso</button>
-        ${pedirInfoBtn}
         <button class="status-btn btn-cerrar" onclick="changeStatus(${c.id},'Cerrado')">Cerrar</button>
       </div>`;
-  } else if (c.estado === 'En proceso') {
+  } else if (grupo === 'proceso') {
     actionsHtml = `
       <div class="status-actions">
-        ${pedirInfoBtn}
         <button class="status-btn btn-cerrar" onclick="changeStatus(${c.id},'Cerrado')">Cerrar</button>
       </div>`;
-  } else if (c.estado === 'Esperando info') {
+  } else if (grupo === 'espera') {
     actionsHtml = `
       <div class="status-actions">
         <button class="status-btn btn-proceso" onclick="changeStatus(${c.id},'En proceso')">Retomar → En proceso</button>
-        <button class="status-btn btn-cerrar" onclick="changeStatus(${c.id},'Cerrado')">Cerrar</button>
-      </div>`;
-  } else if (c.estado === 'Respondido') {
-    actionsHtml = `
-      <div class="status-actions">
         <button class="status-btn btn-cerrar" onclick="changeStatus(${c.id},'Cerrado')">Cerrar</button>
       </div>`;
   }
@@ -1566,8 +1521,9 @@ function renderTicketCard(c, isPlanetQuery) {
       <div class="ticket-body">
         <div class="card-summary" onclick="toggleCard('${cardId}')">
           <div class="card-top">
-            <span class="ticket-status ${statusClass(c.estado)}">${esc(estadoLabel(c.estado))}</span>
+            ${badgeEstado(grupo, false)}
             <span class="card-date">${esc(fmtFecha(c.fecha))}</span>
+            ${c.estado === 'Respuesta cliente' ? '<span class="tag-respondio">💬 Respondió el cliente</span>' : ''}
             <span class="ticket-client-tag tag-${esc(c.cliente)}">${esc(c.cliente)}</span>
             ${CHEVRON}
           </div>
@@ -1586,27 +1542,24 @@ function renderTicketCard(c, isPlanetQuery) {
     </div>`;
 }
 
-async function planetReply(id) {
+async function planetReply(id, pedirInfo) {
   const input = $('preply-' + id);
   const texto = input.value.trim();
-  if (!texto) return;
+  if (!texto) { toast(pedirInfo ? 'Escribí qué info necesitás del cliente' : 'Escribí un mensaje'); return; }
+  const btns = input.parentElement.querySelectorAll('button');
   input.disabled = true;
-  input.nextElementSibling.disabled = true;
+  btns.forEach(b => b.disabled = true);
 
-  const res = await api({
-    action: 'responder',
-    id: id,
-    autor: currentUser.usuario,
-    nombre: currentUser.nombre,
-    texto: texto
-  });
+  const params = { action: 'responder', id: id, texto: texto };
+  if (pedirInfo) params.esperar_info = '1';
+  const res = await api(params);
 
   input.disabled = false;
-  input.nextElementSibling.disabled = false;
+  btns.forEach(b => b.disabled = false);
 
   if (res.ok) {
     input.value = '';
-    toast('Mensaje enviado');
+    toast(pedirInfo ? 'Mensaje enviado · Esperando info del cliente' : 'Mensaje enviado');
     loadPlanetData();
   } else {
     toast('Error: ' + (res.error || 'No se pudo enviar'));
