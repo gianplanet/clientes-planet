@@ -918,7 +918,48 @@ function avatarColor(name) {
 }
 
 let _jsonpId = 0;
-function api(params) {
+// Acciones que se pueden repetir sin riesgo (solo leen datos o inician sesión)
+const API_REINTENTABLES = ['login', 'consultas', 'clientes', 'usuarios'];
+
+// Llama al servidor; si tarda demasiado en una acción segura, reintenta una vez
+async function api(params) {
+  let res = await apiOnce(Object.assign({}, params));
+  if (res && res.timeout && API_REINTENTABLES.indexOf(params.action) >= 0) {
+    res = await apiOnce(Object.assign({}, params));
+  }
+  // Sesión vencida o inválida: volver al login
+  if (res && res.auth === false && currentUser) {
+    doLogout(true);
+    toast(res.error || 'Sesión vencida, ingresá de nuevo');
+  }
+  return res;
+}
+
+// Pedido normal (fetch). Si el navegador no lo permite, usa JSONP como respaldo.
+async function apiOnce(params) {
+  if (currentUser && currentUser.token && !params.token) params.token = currentUser.token;
+  const url = API + '?' + new URLSearchParams(params).toString();
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS);
+  try {
+    const r = await fetch(url, { signal: ctrl.signal, redirect: 'follow' });
+    const text = await r.text();
+    try { return JSON.parse(text); }
+    // Google devolvió su página de error ("No se pudo abrir el archivo"): servidor momentáneamente caído
+    catch (e) { return NO_DISPONIBLE_RES(); }
+  } catch (e) {
+    if (e.name === 'AbortError') return TIMEOUT_RES();
+    return apiJsonp(params);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const API_TIMEOUT_MS = 30000;
+const TIMEOUT_RES = () => ({ ok: false, timeout: true, error: 'El servidor tardó demasiado en responder. Probá de nuevo en unos segundos.' });
+const NO_DISPONIBLE_RES = () => ({ ok: false, timeout: true, error: 'Google no pudo atender el pedido en este momento. Probá de nuevo en unos segundos.' });
+
+function apiJsonp(params) {
   return new Promise((resolve) => {
     const cbName = '_planet_cb_' + (++_jsonpId);
     params.callback = cbName;
@@ -928,8 +969,8 @@ function api(params) {
     const script = document.createElement('script');
     const timeout = setTimeout(() => {
       cleanup();
-      resolve({ ok: false, error: 'Timeout de conexión' });
-    }, 15000);
+      resolve(TIMEOUT_RES());
+    }, API_TIMEOUT_MS);
     function cleanup() {
       clearTimeout(timeout);
       delete window[cbName];
@@ -937,11 +978,6 @@ function api(params) {
     }
     window[cbName] = function(data) {
       cleanup();
-      // Sesión vencida o inválida: volver al login
-      if (data && data.auth === false && currentUser) {
-        doLogout(true);
-        toast(data.error || 'Sesión vencida, ingresá de nuevo');
-      }
       resolve(data);
     };
     script.src = url;
@@ -966,7 +1002,9 @@ async function doLogin() {
   $('login-btn').textContent = 'Ingresando...';
   $('login-error').style.display = 'none';
 
+  const slow = setTimeout(() => { $('login-btn').textContent = 'Conectando con el servidor...'; }, 6000);
   const res = await api({ action: 'login', usuario: user, password: pass });
+  clearTimeout(slow);
   $('login-btn').disabled = false;
   $('login-btn').textContent = 'Ingresar';
 
