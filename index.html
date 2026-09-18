@@ -565,6 +565,7 @@ body {
   animation: spin 0.7s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+.icon-btn.spinning svg { animation: spin 0.9s linear infinite; }
 
 /* ── TOAST ── */
 .toast {
@@ -627,7 +628,7 @@ body {
         </div>
       </div>
       <div class="topbar-actions">
-        <button class="icon-btn" onclick="loadClientData()" title="Recargar">
+        <button class="icon-btn" id="client-reload" onclick="loadClientData()" title="Recargar">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
         </button>
         <button class="icon-btn" onclick="doLogout()" title="Salir">
@@ -721,7 +722,7 @@ body {
         </div>
       </div>
       <div class="topbar-actions">
-        <button class="icon-btn" onclick="loadPlanetData()" title="Recargar">
+        <button class="icon-btn" id="planet-reload" onclick="loadPlanetData()" title="Recargar">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
         </button>
         <button class="icon-btn" onclick="doLogout()" title="Salir">
@@ -1016,12 +1017,14 @@ async function doLogin() {
 
   currentUser = res.user;
   currentUser.token = res.token;
+  datosMostrados = false;
   try { localStorage.setItem('planet_user', JSON.stringify(currentUser)); } catch(e) {}
 
+  // El servidor ya manda las consultas junto con el login: no hace falta otro pedido
   if (currentUser.team === 'planet') {
-    initPlanetView();
+    initPlanetView(res.consultas);
   } else {
-    initClientView();
+    initClientView(res.consultas);
   }
 }
 
@@ -1029,7 +1032,9 @@ function doLogout(sessionAlreadyInvalid) {
   if (currentUser && currentUser.token && sessionAlreadyInvalid !== true) {
     api({ action: 'logout', token: currentUser.token });
   }
+  borrarCache();
   currentUser = null;
+  datosMostrados = false;
   try { localStorage.removeItem('planet_user'); } catch(e) {}
   $('login-user').value = '';
   $('login-pass').value = '';
@@ -1055,27 +1060,62 @@ function tryAutoLogin() {
   } catch(e) {}
 }
 
+// ── CACHE LOCAL: muestra al instante las consultas de la última visita mientras se actualizan ──
+let datosMostrados = false;  // ya hay consultas en pantalla (del cache o del servidor)
+function cacheKey() { return 'planet_cache_' + (currentUser ? currentUser.usuario : ''); }
+function leerCache() {
+  try { const raw = localStorage.getItem(cacheKey()); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
+}
+function guardarCache(lista) {
+  try { localStorage.setItem(cacheKey(), JSON.stringify(lista)); } catch (e) {}
+}
+function borrarCache() {
+  try { localStorage.removeItem(cacheKey()); } catch (e) {}
+}
+function setActualizando(btnId, on) {
+  const b = $(btnId);
+  if (b) b.classList.toggle('spinning', on);
+}
+
 // ── CLIENT VIEW ──
-function initClientView() {
+function initClientView(prefetched) {
   $('client-name').textContent = currentUser.nombre;
   $('client-org').textContent = currentUser.cliente;
   $('client-avatar').textContent = currentUser.nombre[0];
   $('client-avatar').style.background = avatarColor(currentUser.nombre);
   show('screen-client');
-  loadClientData();
+  if (!prefetched) {
+    const cached = leerCache();
+    if (cached) renderClientData(cached);
+  }
+  loadClientData(prefetched);
 }
 
-async function loadClientData() {
-  $('client-mis-list').innerHTML = '<div class="spinner"></div>';
-  $('client-planet-list').innerHTML = '<div class="spinner"></div>';
-
-  const res = await api({ action: 'consultas', cliente: currentUser.cliente });
-  if (!res.ok) {
-    $('client-mis-list').innerHTML = '<div class="empty-state"><p>Error: ' + esc(res.error) + '</p></div>';
-    return;
+async function loadClientData(prefetched) {
+  let lista = prefetched;
+  if (!lista) {
+    if (!datosMostrados) {
+      $('client-mis-list').innerHTML = '<div class="spinner"></div>';
+      $('client-planet-list').innerHTML = '<div class="spinner"></div>';
+    }
+    setActualizando('client-reload', true);
+    const res = await api({ action: 'consultas', cliente: currentUser.cliente });
+    setActualizando('client-reload', false);
+    if (!currentUser) return;  // cerró sesión mientras cargaba
+    if (!res.ok) {
+      if (datosMostrados) toast('No se pudo actualizar: ' + (res.error || 'error'));
+      else $('client-mis-list').innerHTML = '<div class="empty-state"><p>Error: ' + esc(res.error) + '</p></div>';
+      return;
+    }
+    lista = res.consultas;
   }
+  guardarCache(lista);
+  renderClientData(lista);
+}
 
-  const consultas = normEstados(res.consultas);
+function renderClientData(lista) {
+  datosMostrados = true;
+  const consultas = normEstados(lista);
 
   // Split: mis consultas (cliente→planet) vs de planet (planet→cliente)
   const mis = consultas.filter(c => c.direccion === 'cliente_a_planet');
@@ -1346,7 +1386,7 @@ function clientSubtab(btn, id) {
 }
 
 // ═══ PLANET VIEW ═══
-function initPlanetView() {
+function initPlanetView(prefetched) {
   $('planet-name').textContent = currentUser.nombre;
   $('planet-role').textContent = 'Planet · ' + (currentUser.role === 'admin' ? 'Admin' : 'Usuario');
   $('planet-avatar').textContent = currentUser.nombre[0];
@@ -1358,20 +1398,38 @@ function initPlanetView() {
     $('admin-btn').style.display = '';
   }
   show('screen-planet');
-  loadPlanetData();
+  if (!prefetched) {
+    const cached = leerCache();
+    if (cached) renderPlanetData(cached);
+  }
+  loadPlanetData(prefetched);
 }
 
-async function loadPlanetData() {
-  $('planet-consultas-list').innerHTML = '<div class="spinner"></div>';
-  $('planet-enviadas-list').innerHTML = '<div class="spinner"></div>';
-
-  const res = await api({ action: 'consultas' });
-  if (!res.ok) {
-    $('planet-consultas-list').innerHTML = '<div class="empty-state"><p>Error: ' + esc(res.error) + '</p></div>';
-    return;
+async function loadPlanetData(prefetched) {
+  let lista = prefetched;
+  if (!lista) {
+    if (!datosMostrados) {
+      $('planet-consultas-list').innerHTML = '<div class="spinner"></div>';
+      $('planet-enviadas-list').innerHTML = '<div class="spinner"></div>';
+    }
+    setActualizando('planet-reload', true);
+    const res = await api({ action: 'consultas' });
+    setActualizando('planet-reload', false);
+    if (!currentUser) return;  // cerró sesión mientras cargaba
+    if (!res.ok) {
+      if (datosMostrados) toast('No se pudo actualizar: ' + (res.error || 'error'));
+      else $('planet-consultas-list').innerHTML = '<div class="empty-state"><p>Error: ' + esc(res.error) + '</p></div>';
+      return;
+    }
+    lista = res.consultas;
   }
+  guardarCache(lista);
+  renderPlanetData(lista);
+}
 
-  allConsultas = normEstados(res.consultas);
+function renderPlanetData(lista) {
+  datosMostrados = true;
+  allConsultas = normEstados(lista);
 
   // Unique clients from consultas (for filter chips)
   allClientes = [...new Set(allConsultas.map(c => c.cliente))].filter(Boolean).sort();
