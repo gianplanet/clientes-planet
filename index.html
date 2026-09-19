@@ -1210,19 +1210,42 @@ const imgsPendientes = {};             // clave del formulario → [{ b64, mime,
 function elegirImagenes(clave) {
   const input = $('img-input');
   input.value = '';
-  input.onchange = async () => {
-    const files = Array.from(input.files || []);
-    const lista = imgsPendientes[clave] = imgsPendientes[clave] || [];
-    for (const f of files) {
-      if (lista.length >= IMG_MAX_POR_MENSAJE) { toast('Máximo ' + IMG_MAX_POR_MENSAJE + ' fotos por mensaje'); break; }
-      if (!/^image\//.test(f.type)) { toast('Solo se pueden adjuntar imágenes'); continue; }
-      try { lista.push(await comprimirImagen(f)); }
-      catch (e) { toast('No se pudo leer la imagen ' + f.name); }
-    }
-    pintarPrevias(clave);
-  };
+  input.onchange = () => agregarImagenes(clave, Array.from(input.files || []));
   input.click();
 }
+
+async function agregarImagenes(clave, files) {
+  const lista = imgsPendientes[clave] = imgsPendientes[clave] || [];
+  for (const f of files) {
+    if (lista.length >= IMG_MAX_POR_MENSAJE) { toast('Máximo ' + IMG_MAX_POR_MENSAJE + ' fotos por mensaje'); break; }
+    if (!/^image\//.test(f.type)) { toast('Solo se pueden adjuntar imágenes'); continue; }
+    try { lista.push(await comprimirImagen(f)); }
+    catch (e) { toast('No se pudo leer la imagen ' + (f.name || '')); }
+  }
+  pintarPrevias(clave);
+}
+
+// Pegar una imagen (Ctrl + V) en el cuadro de texto la adjunta al mensaje de ese cuadro
+function claveDeCampo(el) {
+  if (!el || !el.id) return null;
+  let m;
+  if ((m = el.id.match(/^preply-(\d+)$/))) return 'p' + m[1];
+  if ((m = el.id.match(/^reply-(\d+)$/))) return 'c' + m[1];
+  if (el.id.indexOf('pnq-') === 0) return 'pnq';
+  if (el.id.indexOf('nq-') === 0) return 'nq';
+  return null;
+}
+document.addEventListener('paste', e => {
+  const clave = claveDeCampo(document.activeElement);
+  if (!clave || !e.clipboardData) return;
+  const files = Array.from(e.clipboardData.items || [])
+    .filter(it => it.kind === 'file' && /^image\//.test(it.type))
+    .map(it => it.getAsFile()).filter(Boolean);
+  if (!files.length) return;  // si es texto, se pega normal
+  e.preventDefault();
+  agregarImagenes(clave, files);
+  toast('📎 Imagen adjuntada');
+});
 
 // Achica la foto (máx. 1600 px) y la pasa a JPEG para que suba rápido
 function comprimirImagen(file) {
@@ -1826,7 +1849,7 @@ function renderTicketCard(c, isPlanetQuery) {
         <div class="img-previews thread-previews" id="prev-p${c.id}">${previasHtml('p' + c.id)}</div>
         <div class="thread-reply-bar">
           <button type="button" class="attach-btn" onclick="elegirImagenes('p${c.id}')" title="Adjuntar fotos">${CLIP_ICON}</button>
-          <input class="thread-reply-input" placeholder="Responder..." id="preply-${c.id}" onkeydown="if(event.key==='Enter')planetReply(${c.id}, false, this.nextElementSibling)">
+          <input class="thread-reply-input" placeholder="Responder... (podés pegar fotos con Ctrl+V)" id="preply-${c.id}" onkeydown="if(event.key==='Enter')planetReply(${c.id}, false, this.nextElementSibling)">
           <button class="thread-reply-btn" onclick="planetReply(${c.id}, false, this)" title="Envía el mensaje; la consulta queda En proceso">Enviar</button>
           <button class="thread-reply-btn btn-wait" onclick="planetReply(${c.id}, true, this)" title="Envía el mensaje y pasa la consulta a Esperando info">Enviar y pedir info</button>
         </div>`;
