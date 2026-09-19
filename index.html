@@ -708,38 +708,50 @@ body {
 .stat-number .strip span { display: block; height: 1em; line-height: 1; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
-/* ── NOTAS DEL EQUIPO (post-its) ── */
+/* ── POST-ITS de Planet: se pegan y arrastran sobre la pantalla ── */
 .nota-amarillo { --nota-bg: var(--n-amarillo); }
 .nota-rosa { --nota-bg: var(--n-rosa); }
 .nota-verde { --nota-bg: var(--n-verde); }
 .nota-celeste { --nota-bg: var(--n-celeste); }
 .nota-violeta { --nota-bg: var(--n-violeta); }
-.sidebar-badge.nota-badge { background: var(--closed); }
-.notas-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
-.notas-head h3 { margin: 0; font-size: 17px; font-weight: 600; }
-.notas-head p { margin: 2px 0 0; font-size: 13px; color: var(--text-muted); }
-.notas-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 18px; align-items: start; }
-.nota {
+#screen-planet { position: relative; }
+.notas-capa { position: absolute; left: 0; top: 0; width: 100%; height: 0; z-index: 45; }
+.postit {
+  position: absolute; width: 210px; display: flex; flex-direction: column;
   background: var(--nota-bg); color: var(--nota-text);
-  border-radius: 4px 4px 16px 4px; padding: 10px 12px 8px;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.08), 0 8px 18px rgba(0,0,0,0.08);
+  border-radius: 4px 4px 16px 4px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1), 0 10px 22px rgba(0,0,0,0.16);
   transform: rotate(var(--rot, 0deg)); transition: transform 0.35s var(--ease-spring), box-shadow 0.2s;
-  display: flex; flex-direction: column; gap: 6px;
 }
-.nota:hover, .nota:focus-within { transform: rotate(0deg) translateY(-3px); box-shadow: 0 2px 4px rgba(0,0,0,0.1), 0 14px 28px rgba(0,0,0,0.14); }
-.nota-top { display: flex; align-items: center; justify-content: space-between; font-size: 11.5px; font-weight: 600; opacity: 0.75; }
-.nota-texto {
-  width: 100%; border: none; background: transparent; resize: none; outline: none; padding: 0;
+.postit.fija { position: fixed; }
+.postit:hover, .postit:focus-within { transform: rotate(0deg); }
+.postit.arrastrando { transform: rotate(0deg) scale(1.04); box-shadow: 0 4px 8px rgba(0,0,0,0.12), 0 22px 40px rgba(0,0,0,0.24); }
+.postit-barra {
+  display: flex; align-items: center; gap: 0; padding: 3px 3px 0 6px; height: 30px;
+  cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none;
+}
+.postit.arrastrando .postit-barra { cursor: grabbing; }
+.postit-grip { flex: 1; display: flex; align-items: center; opacity: 0.35; }
+.postit-grip svg { width: 18px; height: 18px; }
+.postit-texto {
+  width: 100%; border: none; background: transparent; resize: none; outline: none; padding: 2px 12px 4px;
   font-family: var(--font); font-size: 14px; line-height: 1.45; color: inherit;
-  min-height: 96px; max-height: 320px; field-sizing: content;
+  min-height: 84px; max-height: 300px; field-sizing: content;
 }
-.nota-texto::placeholder { color: inherit; opacity: 0.45; }
-.nota-pie { display: flex; align-items: center; gap: 6px; font-size: 11px; }
+.postit-texto::placeholder { color: inherit; opacity: 0.45; }
+.postit-pie { display: flex; align-items: center; gap: 6px; padding: 0 10px 7px 12px; font-size: 11px; min-height: 22px; }
+.postit-resumen {
+  display: none; padding: 0 12px 8px; font-size: 13px; font-weight: 600; cursor: pointer;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.postit.min { width: 160px; }
+.postit.min .postit-texto, .postit.min .postit-pie { display: none; }
+.postit.min .postit-resumen { display: block; }
 .nota-colores { display: flex; gap: 5px; opacity: 0; transition: opacity 0.15s; }
-.nota:hover .nota-colores, .nota:focus-within .nota-colores { opacity: 1; }
+.postit:hover .nota-colores, .postit:focus-within .nota-colores { opacity: 1; }
 .nota-color { width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid rgba(0,0,0,0.25); cursor: pointer; padding: 0; background: var(--nota-bg); }
 .nota-color.on { box-shadow: 0 0 0 2px var(--nota-text); }
-.nota-estado { margin-left: auto; white-space: nowrap; opacity: 0.65; }
+.nota-estado { margin-left: auto; white-space: nowrap; opacity: 0.6; }
 .nota-btn {
   width: 26px; height: 26px; border-radius: 50%; border: none; background: transparent; color: inherit;
   display: grid; place-items: center; cursor: pointer; opacity: 0.55; flex-shrink: 0;
@@ -748,36 +760,8 @@ body {
 .nota-btn svg { width: 15px; height: 15px; }
 .nota-pin.on { opacity: 1; color: var(--danger); }
 .nota-pin.on svg { fill: currentColor; }
-
-/* Notas fijadas que flotan en la pantalla de Planet */
-.notas-dock { position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 60; }
-.notas-dock:not(.cerrado) {
-  width: min(270px, calc(100vw - 32px)); background: var(--card); border: 1px solid var(--card-border);
-  border-radius: 14px; box-shadow: var(--shadow-lg); overflow: hidden;
-}
-.dock-head {
-  display: flex; align-items: center; justify-content: space-between; gap: 6px;
-  padding: 6px 6px 6px 12px; font-size: 12.5px; font-weight: 600; border-bottom: 1px solid var(--card-border);
-}
-.dock-head svg { width: 14px; height: 14px; vertical-align: -2px; color: var(--danger); fill: currentColor; }
-.dock-btn { border: none; background: none; color: var(--text-secondary); font: 600 12px var(--font); padding: 5px 8px; border-radius: 6px; cursor: pointer; }
-.dock-btn:hover { background: var(--surface); color: var(--text); }
-.dock-lista { max-height: min(50vh, 380px); overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
-.dock-nota { background: var(--nota-bg); color: var(--nota-text); border-radius: 4px 4px 10px 4px; padding: 8px 10px 6px; cursor: pointer; font-size: 13px; }
-.dock-texto { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
-.dock-pie { display: flex; align-items: center; justify-content: space-between; font-size: 11px; margin-top: 2px; }
-.dock-pie span { opacity: 0.7; }
-.dock-pie .nota-btn { width: 22px; height: 22px; color: var(--danger); opacity: 1; }
-.dock-pie .nota-btn svg { fill: currentColor; width: 13px; height: 13px; }
-.dock-fab {
-  position: relative; width: 48px; height: 48px; border-radius: 50%; border: none; cursor: pointer;
-  background: var(--n-amarillo); color: var(--nota-text); display: grid; place-items: center; box-shadow: var(--shadow-lg);
-}
-.dock-fab svg { width: 22px; height: 22px; }
-.dock-fab-n {
-  position: absolute; top: -3px; right: -3px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px;
-  background: var(--danger); color: #fff; font-size: 11px; font-weight: 700; display: grid; place-items: center;
-}
+.btn-nota { background: var(--n-amarillo); border-color: transparent; color: var(--nota-text); }
+.btn-nota:hover { border-color: var(--warning); color: var(--nota-text); }
 
 /* ── GUÍA PARA CLIENTES NUEVOS ── */
 .guia { position: fixed; inset: 0; z-index: 500; }
@@ -956,6 +940,8 @@ body {
 
 <!-- ═══ PLANET VIEW (desktop) ═══ -->
 <div class="screen" id="screen-planet">
+  <!-- Post-its de Planet: flotan sobre la pantalla -->
+  <div class="notas-capa" id="notas-capa"></div>
   <div class="desktop-frame">
     <div class="topbar">
       <div class="topbar-left">
@@ -967,6 +953,9 @@ body {
         </div>
       </div>
       <div class="topbar-actions">
+        <button class="icon-btn btn-nota" onclick="nuevaNota()" title="Pegar una nota" aria-label="Pegar una nota">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15.5 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V8.5L15.5 3z"/><path d="M15 3v6h6"/><path d="M9 13h6M12 10v6"/></svg>
+        </button>
         <button class="icon-btn" id="planet-reload" onclick="loadPlanetData()" title="Recargar">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
         </button>
@@ -985,10 +974,6 @@ body {
         <button class="sidebar-item" onclick="planetNav(this,'planet-enviadas')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
           Enviadas <span class="sidebar-badge purple-badge" id="sb-enviadas">0</span>
-        </button>
-        <button class="sidebar-item" id="sb-notas-btn" onclick="planetNav(this,'planet-notas')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15.5 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V8.5L15.5 3z"/><path d="M15 3v6h6"/></svg>
-          Notas <span class="sidebar-badge nota-badge" id="sb-notas">0</span>
         </button>
         <div class="sidebar-sep"></div>
         <button class="sidebar-item" onclick="planetNav(this,'planet-nueva')">
@@ -1019,21 +1004,6 @@ body {
         <!-- Planet sub: Enviadas -->
         <div class="planet-sub" id="planet-enviadas">
           <div id="planet-enviadas-list"></div>
-        </div>
-
-        <!-- Planet sub: Notas del equipo (post-its) -->
-        <div class="planet-sub" id="planet-notas">
-          <div class="notas-head">
-            <div>
-              <h3>Notas del equipo</h3>
-              <p>Las ven todos los de Planet (los clientes no). Fijá con el pin las que quieras tener siempre a la vista.</p>
-            </div>
-            <button class="btn-send" onclick="nuevaNota()" style="font-size:13px;padding:8px 16px;">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              Nueva nota
-            </button>
-          </div>
-          <div class="notas-grid" id="notas-grid"></div>
         </div>
 
         <!-- Planet sub: Clientes (admin only) -->
@@ -1147,7 +1117,6 @@ body {
       </div>
     </div>
   </div>
-  <div class="notas-dock cerrado" id="notas-dock"></div>
 </div>
 
 <!-- Visor de imágenes -->
@@ -1633,6 +1602,7 @@ function doLogout(sessionAlreadyInvalid) {
   datosMostrados = false;
   _vistos = null;
   notasData = [];
+  if (capaNotas()) capaNotas().innerHTML = '';
   if (_guia) { _guia.root.remove(); _guia = null; }
   Object.keys(clientTabEstado).forEach(k => delete clientTabEstado[k]);
   Object.keys(_numsPrevios).forEach(k => delete _numsPrevios[k]);
@@ -2292,7 +2262,7 @@ function initPlanetView(prefetched) {
   if (!prefetched && !notasData.length) {
     try { const n = JSON.parse(localStorage.getItem(notasKey()) || 'null'); if (n) setNotas(n); } catch (e) {}
   }
-  pintarDock();
+  pintarNotas();
   if (!prefetched) {
     const cached = leerCache();
     if (cached) renderPlanetData(cached);
@@ -2669,32 +2639,38 @@ function planetNav(btn, id) {
   document.querySelectorAll('#screen-planet .planet-sub').forEach(s => s.classList.remove('active'));
   $(id).classList.add('active');
   if (!yaEstaba) anim($(id), { opacity: [0, 1], transform: ['translateY(8px)', 'none'] }, { duracion: 320, mantener: false });
-  pintarDock();
-  if (id === 'planet-notas') {
-    pintarNotas();
-    if (!yaEstaba) entrada($('notas-grid').children, 'translateY(14px) scale(0.96)', 45);
-  }
   if (id === 'planet-usuarios') { loadUsers(); preloadClients(); }
   if (id === 'planet-clientes') loadClients();
 }
 
-// ═══ NOTAS DEL EQUIPO (post-its de Planet) ═══
-// Se guardan en la hoja PortalNotas; las ve todo el equipo Planet (los clientes nunca).
+// ═══ POST-ITS DE PLANET ═══
+// Cada usuario de Planet pega sus notas donde quiera sobre la pantalla y las arrastra (son personales).
+// Con el pin quedan fijas en la pantalla y te siguen al bajar; sin pin quedan pegadas en ese lugar de la página.
+// Se guardan en la hoja PortalNotas con su posición: x = fracción del ancho, y = píxeles desde arriba.
 const NOTA_COLORES = ['amarillo', 'rosa', 'verde', 'celeste', 'violeta'];
+const NOTA_ANCHO = 210;
 const PIN_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 01-1.11 1.79l-1.78.9A2 2 0 005 15.24V16a1 1 0 001 1h12a1 1 0 001-1v-.76a2 2 0 00-1.11-1.79l-1.78-.9A2 2 0 0115 10.76V7a1 1 0 011-1 2 2 0 000-4H8a2 2 0 000 4 1 1 0 011 1z"/></svg>';
-const TACHO_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>';
-const NOTA_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15.5 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V8.5L15.5 3z"/><path d="M15 3v6h6"/></svg>';
+const CRUZ_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+const ACHICAR_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14"/></svg>';
+const AGRANDAR_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>';
+const GRIP_ICON = '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>';
 let notasData = [];
 let _notaTmp = 0;
 let _repintarNotas = false;
-let _dockAbierto = true;
-try { _dockAbierto = localStorage.getItem('planet_dock') !== '0'; } catch (e) {}
+let _arrastrando = false;
+let _zNota = 1;
 
 function notasKey() { return 'planet_notas_' + (currentUser ? currentUser.usuario : ''); }
-function rotDe(el) { return 'rotate(' + (el.style.getPropertyValue('--rot') || '0deg') + ')'; }
 function notaPorId(id) { return notasData.find(n => String(n.id) === String(id)); }
 function notaDe(el) { const c = el && el.closest('[data-id]'); return c ? notaPorId(c.dataset.id) : null; }
-function elNota(n) { return document.querySelector(`#notas-grid .nota[data-id="${n.id}"]`); }
+function elNota(n) { return n ? document.querySelector(`#notas-capa .postit[data-id="${n.id}"]`) : null; }
+function capaNotas() { return $('notas-capa'); }
+// Posición de la nota en la ventana, calculada con su lugar guardado (sin la inclinación ni animaciones)
+function posEnVentana(el, n) {
+  const o = origenCapa(), l = parseFloat(el.style.left) || 0, t = parseFloat(el.style.top) || 0;
+  return n.pin ? { left: l, top: t } : { left: l + o.left - window.scrollX, top: t + o.top - window.scrollY };
+}
+function origenCapa() { const r = capaNotas().getBoundingClientRect(); return { left: r.left + window.scrollX, top: r.top + window.scrollY }; }
 
 // Junta lo que llega del servidor con lo local: una nota que se está editando o guardando no se pisa
 function setNotas(lista) {
@@ -2704,93 +2680,154 @@ function setNotas(lista) {
     const l = locales.get(String(n.id));
     if (!l) return n;
     if (l._borrada) return null;
-    if (l._sucio || l._guardando) return l;
+    if (l._sucio || l._guardando || l._creando) return l;
     return Object.assign(l, n);
   }).filter(Boolean);
-  notasData.filter(n => String(n.id).indexOf('tmp') === 0).forEach(n => nuevas.unshift(n));
+  notasData.filter(n => String(n.id).indexOf('tmp') === 0).forEach(n => nuevas.push(n));
   notasData = nuevas;
   try { localStorage.setItem(notasKey(), JSON.stringify(lista)); } catch (e) {}
   pintarNotas();
 }
 
-function ordenNotas() {
-  return notasData.filter(n => !n._borrada).sort((a, b) =>
-    (b.pin === true) - (a.pin === true) || String(b.id).localeCompare(String(a.id), undefined, { numeric: true }));
-}
-
 function htmlNota(n) {
   const h = String(n.id).split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-  const rot = ((h % 5) - 2) * 0.5;
+  const rot = ((h % 5) - 2) * 0.6;
   const colores = NOTA_COLORES.map(c =>
     `<button class="nota-color nota-${c}${n.color === c ? ' on' : ''}" onclick="notaColor(this,'${c}')" title="Color ${c}" aria-label="Color ${c}"></button>`).join('');
+  const resumen = String(n.texto || '').trim().split('\n')[0];
   return `
-    <div class="nota nota-${n.color || 'amarillo'}" data-id="${esc(String(n.id))}" style="--rot:${rot}deg">
-      <div class="nota-top">
-        <span>${esc(n.nombre_autor || '')}</span>
-        <button class="nota-btn nota-pin${n.pin ? ' on' : ''}" onclick="notaPin(this)" title="${n.pin ? 'Desfijar' : 'Fijar a la vista'}" aria-pressed="${n.pin ? 'true' : 'false'}">${PIN_ICON}</button>
+    <div class="postit nota-${n.color || 'amarillo'}${n.pin ? ' fija' : ''}${n.min ? ' min' : ''}" data-id="${esc(String(n.id))}" style="--rot:${rot}deg" onpointerdown="traerAlFrente(this)">
+      <div class="postit-barra" onpointerdown="arrastrarNota(event)" title="Arrastrá para mover la nota">
+        <span class="postit-grip">${GRIP_ICON}</span>
+        <button class="nota-btn nota-pin${n.pin ? ' on' : ''}" onclick="notaPin(this)" aria-pressed="${n.pin ? 'true' : 'false'}"
+          title="${n.pin ? 'Quitar el pin (vuelve a quedar pegada en la página)' : 'Fijar en la pantalla (te sigue al bajar)'}">${PIN_ICON}</button>
+        <button class="nota-btn" onclick="notaMin(this)" title="${n.min ? 'Agrandar' : 'Achicar'}">${n.min ? AGRANDAR_ICON : ACHICAR_ICON}</button>
+        <button class="nota-btn" onclick="notaBorrar(this)" title="Borrar nota">${CRUZ_ICON}</button>
       </div>
-      <textarea class="nota-texto" placeholder="Escribí la nota..." aria-label="Texto de la nota" oninput="notaEscribir(this)" onblur="notaGuardarYa(this)">${esc(n.texto || '')}</textarea>
-      <div class="nota-pie">
+      <textarea class="postit-texto" placeholder="Escribí tu nota..." aria-label="Texto de la nota" oninput="notaEscribir(this)" onblur="notaGuardarYa(this)">${esc(n.texto || '')}</textarea>
+      <div class="postit-resumen" onclick="notaMin(this)" title="Tocá para agrandar">${resumen ? esc(resumen) : '<i style="opacity:.6">(nota vacía)</i>'}</div>
+      <div class="postit-pie">
         <div class="nota-colores">${colores}</div>
-        <span class="nota-estado">${esc(n.actualizado_por ? 'Editó ' + n.actualizado_por : fmtFecha(n.fecha))}</span>
-        <button class="nota-btn" onclick="notaBorrar(this)" title="Borrar nota">${TACHO_ICON}</button>
+        <span class="nota-estado"></span>
       </div>
     </div>`;
 }
 
+// Coloca la nota en su lugar, sin dejar que quede fuera de la pantalla
+function ubicarNota(el, n) {
+  const capa = capaNotas();
+  if (!el || !n || !capa || !capa.offsetWidth) return;
+  const W = n.pin ? window.innerWidth : capa.offsetWidth;
+  const w = el.offsetWidth || NOTA_ANCHO;
+  const x = n.x == null || isNaN(n.x) ? 0.72 : Number(n.x);
+  const y = n.y == null || isNaN(n.y) ? 110 : Number(n.y);
+  el.style.left = Math.min(Math.max(8, x * W), Math.max(8, W - w - 8)) + 'px';
+  el.style.top = (n.pin ? Math.min(Math.max(8, y), window.innerHeight - 48) : Math.max(8, y)) + 'px';
+}
+
 function pintarNotas() {
-  const grid = $('notas-grid');
-  ponerContador($('sb-notas'), notasData.filter(n => !n._borrada).length);
-  pintarDock();
-  if (!grid) return;
-  // Si alguien está escribiendo en una nota, no se repinta (perdería el foco); se repinta al salir
-  if (grid.contains(document.activeElement)) { _repintarNotas = true; return; }
+  const capa = capaNotas();
+  if (!capa) return;
+  // No se repinta mientras se arrastra o se escribe (se perdería el foco); se repinta después
+  const escribiendo = capa.contains(document.activeElement) && document.activeElement.tagName === 'TEXTAREA';
+  if (_arrastrando || escribiendo || !capa.offsetWidth) { _repintarNotas = true; return; }
   _repintarNotas = false;
-  const lista = ordenNotas();
-  grid.innerHTML = lista.length ? lista.map(htmlNota).join('')
-    : '<div class="empty-state" style="grid-column:1/-1"><p>Todavía no hay notas. Tocá “Nueva nota” para crear la primera.</p></div>';
+  capa.innerHTML = notasData.filter(n => !n._borrada).map(htmlNota).join('');
+  capa.querySelectorAll('.postit').forEach(el => ubicarNota(el, notaDe(el)));
 }
 document.addEventListener('focusout', e => {
-  const grid = $('notas-grid');
-  if (!_repintarNotas || !grid || !grid.contains(e.target)) return;
-  setTimeout(() => { if (!grid.contains(document.activeElement)) pintarNotas(); }, 0);
+  const capa = capaNotas();
+  if (!_repintarNotas || !capa || !capa.contains(e.target)) return;
+  setTimeout(() => { if (!capa.contains(document.activeElement)) pintarNotas(); }, 0);
 });
+window.addEventListener('resize', () => {
+  document.querySelectorAll('#notas-capa .postit').forEach(el => ubicarNota(el, notaDe(el)));
+});
+
+function traerAlFrente(el) { if (el) el.style.zIndex = ++_zNota; }
+
+// Arrastrar desde la barra de arriba (mouse o dedo)
+function arrastrarNota(e) {
+  if (e.target.closest('button')) return;
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  const el = e.currentTarget.closest('.postit'), n = notaDe(el);
+  if (!n) return;
+  e.preventDefault();
+  traerAlFrente(el);
+  const r = posEnVentana(el, n), dx = e.clientX - r.left, dy = e.clientY - r.top;
+  const o = origenCapa();
+  let movio = false;
+  _arrastrando = true;
+  el.classList.add('arrastrando');
+  const mover = ev => {
+    movio = true;
+    const left = Math.min(Math.max(0, ev.clientX - dx), window.innerWidth - el.offsetWidth);
+    const top = Math.min(Math.max(0, ev.clientY - dy), window.innerHeight - 40);
+    if (n.pin) { el.style.left = left + 'px'; el.style.top = top + 'px'; }
+    else { el.style.left = (left + window.scrollX - o.left) + 'px'; el.style.top = (top + window.scrollY - o.top) + 'px'; }
+  };
+  const soltar = () => {
+    window.removeEventListener('pointermove', mover);
+    window.removeEventListener('pointerup', soltar);
+    window.removeEventListener('pointercancel', soltar);
+    el.classList.remove('arrastrando');
+    _arrastrando = false;
+    if (movio) {
+      const W = n.pin ? window.innerWidth : capaNotas().offsetWidth;
+      n.x = parseFloat(el.style.left) / W;
+      n.y = parseFloat(el.style.top);
+      guardarNota(n, { x: n.x.toFixed(4), y: Math.round(n.y) });
+    }
+    if (_repintarNotas) pintarNotas();
+  };
+  window.addEventListener('pointermove', mover);
+  window.addEventListener('pointerup', soltar);
+  window.addEventListener('pointercancel', soltar);
+}
 
 function estadoNota(n, texto) {
   const el = elNota(n);
   const e = el && el.querySelector('.nota-estado');
-  if (e) e.textContent = texto;
+  if (!e) return;
+  e.textContent = texto;
+  clearTimeout(e._t);
+  if (texto === 'Guardado ✓') e._t = setTimeout(() => { e.textContent = ''; }, 1800);
 }
 
 async function guardarNota(n, campos) {
   if (n._creando) await n._creando;
   if (n._borrada || String(n.id).indexOf('tmp') === 0) return;
   n._guardando = (n._guardando || 0) + 1;
-  estadoNota(n, 'Guardando…');
+  if ('texto' in campos) estadoNota(n, 'Guardando…');
   const res = await api(Object.assign({ action: 'nota_guardar', id: n.id }, campos));
   n._guardando--;
   if (res.ok) {
-    n.actualizado = res.actualizado;
-    n.actualizado_por = currentUser ? currentUser.nombre : n.actualizado_por;
-    estadoNota(n, n._sucio ? 'Sin guardar…' : 'Guardado ✓');
+    if ('texto' in campos) estadoNota(n, n._sucio ? 'Sin guardar…' : 'Guardado ✓');
   } else {
-    if ('texto' in campos) n._sucio = true;
-    estadoNota(n, 'No se guardó');
+    if ('texto' in campos) { n._sucio = true; estadoNota(n, 'No se guardó'); }
     toast('No se pudo guardar la nota: ' + (res.error || 'error'));
   }
 }
 
 async function nuevaNota() {
-  if (!$('planet-notas').classList.contains('active')) irANotas();
-  const n = { id: 'tmp' + (++_notaTmp), texto: '', color: 'amarillo', pin: false, nombre_autor: currentUser.nombre, fecha: 'Recién' };
-  notasData.unshift(n);
-  pintarNotas();
+  const capa = capaNotas();
+  if (!capa || !capa.offsetWidth) return;
+  const k = notasData.filter(n => !n._borrada).length % 5;
+  const o = origenCapa();
+  const n = {
+    id: 'tmp' + (++_notaTmp), texto: '', color: NOTA_COLORES[k], pin: false, min: false,
+    x: Math.max(0, window.innerWidth - NOTA_ANCHO - 40 - k * 22) / capa.offsetWidth,
+    y: window.scrollY - o.top + 90 + k * 26
+  };
+  notasData.push(n);
+  capa.insertAdjacentHTML('beforeend', htmlNota(n));
   const el = elNota(n);
-  if (el) {
-    anim(el, { transform: ['scale(0.6) rotate(-6deg)', 'scale(1) ' + rotDe(el)], opacity: [0, 1] }, { resorte: [300, 18], mantener: false });
-    el.querySelector('.nota-texto').focus();
-  }
-  n._creando = api({ action: 'nota_guardar', texto: '', color: 'amarillo' }).then(res => {
+  ubicarNota(el, n);
+  traerAlFrente(el);
+  anim(el, { transform: ['scale(0.5) rotate(-8deg)', 'scale(1) rotate(' + el.style.getPropertyValue('--rot') + ')'], opacity: [0, 1] },
+    { resorte: [300, 17], mantener: false });
+  el.querySelector('.postit-texto').focus({ preventScroll: true });
+  n._creando = api({ action: 'nota_guardar', texto: '', color: n.color, x: n.x.toFixed(4), y: Math.round(n.y) }).then(res => {
     if (!res.ok) {
       n._borrada = true;
       notasData = notasData.filter(x => x !== n);
@@ -2800,7 +2837,6 @@ async function nuevaNota() {
     }
     const e = elNota(n);
     n.id = res.id;
-    n.fecha = res.fecha;
     if (e) e.dataset.id = String(res.id);
     // Si mientras tanto llegó la misma nota desde el servidor, queda una sola
     notasData = notasData.filter(x => x === n || String(x.id) !== String(n.id));
@@ -2829,90 +2865,70 @@ function notaGuardarYa(el) {
   clearTimeout(n._timer);
   n._sucio = false;
   guardarNota(n, { texto: n.texto });
+  // Actualiza el resumen que se ve cuando la nota está achicada
+  const e = elNota(n), linea = String(n.texto || '').trim().split('\n')[0];
+  const r = e && e.querySelector('.postit-resumen');
+  if (r) r.innerHTML = linea ? esc(linea) : '<i style="opacity:.6">(nota vacía)</i>';
 }
 
+// Pin: fija la nota en la pantalla (te sigue al bajar) o la vuelve a pegar en la página, sin que salte de lugar
 function notaPin(btn) {
-  const n = notaDe(btn);
-  if (!n) return;
+  const n = notaDe(btn), el = elNota(n);
+  if (!n || !el) return;
+  const r = posEnVentana(el, n), o = origenCapa();
   n.pin = !n.pin;
-  guardarNota(n, { pin: n.pin ? '1' : '0' });
-  pintarNotas();
-  if (n.pin) {
-    const d = document.querySelector(`#notas-dock .dock-nota[data-id="${n.id}"]`);
-    if (d) anim(d, { transform: ['scale(0.7)', 'none'], opacity: [0, 1] }, { resorte: [320, 18], mantener: false });
-    else saltar(document.querySelector('#notas-dock .dock-fab'));
-  }
+  if (n.pin) { n.x = r.left / window.innerWidth; n.y = r.top; }
+  else { n.x = (r.left + window.scrollX - o.left) / capaNotas().offsetWidth; n.y = r.top + window.scrollY - o.top; }
+  el.classList.toggle('fija', n.pin);
+  btn.classList.toggle('on', n.pin);
+  btn.setAttribute('aria-pressed', n.pin ? 'true' : 'false');
+  btn.title = n.pin ? 'Quitar el pin (vuelve a quedar pegada en la página)' : 'Fijar en la pantalla (te sigue al bajar)';
+  ubicarNota(el, n);
+  anim(btn, { transform: ['scale(0.5) rotate(-30deg)', 'none'] }, { resorte: [420, 14], mantener: false });
+  toast(n.pin ? '📎 Nota fijada: te sigue al bajar' : '📎 Nota pegada en la página');
+  guardarNota(n, { pin: n.pin ? '1' : '0', x: n.x.toFixed(4), y: Math.round(n.y) });
+}
+
+function notaMin(btn) {
+  const n = notaDe(btn), el = elNota(n);
+  if (!n || !el) return;
+  n.min = !n.min;
+  const h0 = el.offsetHeight, w0 = el.offsetWidth;
+  el.classList.toggle('min', n.min);
+  const b = el.querySelector('.postit-barra .nota-btn:nth-of-type(2)');
+  if (b) { b.innerHTML = n.min ? AGRANDAR_ICON : ACHICAR_ICON; b.title = n.min ? 'Agrandar' : 'Achicar'; }
+  anim(el, { height: [h0 + 'px', el.offsetHeight + 'px'], width: [w0 + 'px', el.offsetWidth + 'px'] }, { resorte: [300, 24], mantener: false });
+  ubicarNota(el, n);
+  if (!n.min) el.querySelector('.postit-texto').focus({ preventScroll: true });
+  guardarNota(n, { min: n.min ? '1' : '0' });
 }
 
 function notaColor(btn, color) {
-  const n = notaDe(btn);
+  const n = notaDe(btn), el = elNota(n);
   if (!n || n.color === color) return;
   n.color = color;
-  const el = elNota(n);
   if (el) {
     NOTA_COLORES.forEach(c => el.classList.toggle('nota-' + c, c === color));
     el.querySelectorAll('.nota-color').forEach(b => b.classList.toggle('on', b.classList.contains('nota-' + color)));
   }
-  pintarDock();
   guardarNota(n, { color });
 }
 
 async function notaBorrar(btn) {
   const n = notaDe(btn);
   if (!n) return;
-  if (String(n.texto || '').trim() && !confirm('¿Borrar esta nota? La deja de ver todo el equipo.')) return;
+  if (String(n.texto || '').trim() && !confirm('¿Borrar esta nota?')) return;
   n._borrada = true;
   clearTimeout(n._timer);
   const el = elNota(n);
-  if (el) await anim(el, { transform: ['none', 'scale(0.6) rotate(8deg)'], opacity: [1, 0] }, { duracion: 220, mantener: false, fill: 'forwards' });
+  if (el) {
+    await anim(el, { transform: ['none', 'scale(0.5) rotate(10deg)'], opacity: [1, 0] }, { duracion: 220, mantener: false, fill: 'forwards' });
+    el.remove();
+  }
   notasData = notasData.filter(x => x !== n);
-  pintarNotas();
   if (n._creando) return;  // se borra en el servidor cuando termine de crearse
   const res = await api({ action: 'nota_borrar', id: n.id });
   if (!res.ok) toast('No se pudo borrar la nota: ' + (res.error || 'error'));
-}
-
-// Notas fijadas: flotan abajo a la derecha en todas las secciones de Planet
-function pintarDock() {
-  const dock = $('notas-dock');
-  if (!dock) return;
-  const enNotas = $('planet-notas') && $('planet-notas').classList.contains('active');
-  const fijadas = ordenNotas().filter(n => n.pin);
-  dock.hidden = enNotas;
-  const abierto = _dockAbierto && fijadas.length > 0;
-  dock.classList.toggle('cerrado', !abierto);
-  dock.innerHTML = abierto ? `
-    <div class="dock-head">
-      <span>${PIN_ICON} Fijadas · ${fijadas.length}</span>
-      <span>
-        <button class="dock-btn" onclick="irANotas()">Ver todas</button>
-        <button class="dock-btn" onclick="toggleDock()" title="Minimizar" aria-label="Minimizar">—</button>
-      </span>
-    </div>
-    <div class="dock-lista">${fijadas.map(n => `
-      <div class="dock-nota nota-${n.color || 'amarillo'}" data-id="${esc(String(n.id))}" onclick="irANotas('${esc(String(n.id))}')">
-        <div class="dock-texto">${n.texto ? esc(n.texto) : '<i style="opacity:.6">(nota vacía)</i>'}</div>
-        <div class="dock-pie"><span>${esc(n.nombre_autor || '')}</span>
-          <button class="nota-btn" onclick="event.stopPropagation(); notaPin(this)" title="Desfijar" aria-label="Desfijar">${PIN_ICON}</button></div>
-      </div>`).join('')}
-    </div>`
-    : `<button class="dock-fab" onclick="${fijadas.length ? 'toggleDock()' : 'irANotas()'}" title="Notas del equipo" aria-label="Notas del equipo">${NOTA_ICON}${fijadas.length ? `<span class="dock-fab-n">${fijadas.length}</span>` : ''}</button>`;
-}
-function toggleDock() {
-  _dockAbierto = !_dockAbierto;
-  try { localStorage.setItem('planet_dock', _dockAbierto ? '1' : '0'); } catch (e) {}
-  pintarDock();
-  const d = $('notas-dock');
-  anim(d, { transform: [_dockAbierto ? 'scale(0.85)' : 'scale(1.1)', 'none'], opacity: [0.4, 1] }, { resorte: [320, 22], mantener: false });
-  d.style.transformOrigin = 'bottom right';
-}
-function irANotas(id) {
-  planetNav($('sb-notas-btn'), 'planet-notas');
-  if (!id) return;
-  const n = notaPorId(id), el = n && elNota(n);
-  if (!el) return;
-  el.scrollIntoView({ block: 'center', behavior: SIN_MOVIMIENTO ? 'auto' : 'smooth' });
-  anim(el, { transform: ['scale(1.06)', rotDe(el)] }, { resorte: [300, 14], mantener: false, retraso: 250 });
 }
 
 // ═══ GUÍA PARA CLIENTES NUEVOS ═══
