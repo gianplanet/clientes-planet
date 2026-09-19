@@ -566,6 +566,16 @@ body {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 .icon-btn.spinning svg { animation: spin 0.9s linear infinite; }
+.btn-loading { position: relative; pointer-events: none; opacity: 0.85; }
+.btn-loading::before {
+  content: ''; display: inline-block; width: 12px; height: 12px; margin-right: 6px;
+  border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%;
+  vertical-align: -2px; animation: spin 0.7s linear infinite;
+}
+.reply-send.btn-loading::before { margin-right: 0; }
+.reply-send.btn-loading svg { display: none; }
+.card-busy { pointer-events: none; }
+.card-busy .ticket-details, .card-busy .consulta-detail, .card-busy .reply-box { opacity: 0.6; }
 
 /* ── TOAST ── */
 .toast {
@@ -1081,6 +1091,34 @@ function setActualizando(btnId, on) {
   if (b) b.classList.toggle('spinning', on);
 }
 
+// ── BOTONES "CARGANDO": evita que se toque varias veces mientras se guarda ──
+function ocupado(btn, texto) {
+  if (!btn) return () => {};
+  const original = btn.innerHTML;
+  btn.classList.add('btn-loading');
+  btn.disabled = true;
+  if (texto) btn.textContent = texto;
+  return () => { btn.classList.remove('btn-loading'); btn.disabled = false; btn.innerHTML = original; };
+}
+// Bloquea toda la tarjeta mientras se guarda un cambio en ella
+function tarjetaOcupada(cardId, on) {
+  const el = $(cardId);
+  if (el) el.classList.toggle('card-busy', on);
+}
+function ahoraTexto() {
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+// Aplica en pantalla lo que el servidor ya confirmó, sin esperar a recargar la lista
+function aplicarLocal(lista, id, cambios, mensaje) {
+  const c = (lista || []).find(x => String(x.id) === String(id));
+  if (!c) return;
+  if (cambios.estado) c.estado = cambios.estado;
+  if (cambios.atendido_por && !c.atendido_por) c.atendido_por = cambios.atendido_por;
+  if (mensaje) (c.mensajes = c.mensajes || []).push(mensaje);
+}
+let clientConsultas = [];
+
 // ── CLIENT VIEW ──
 function initClientView(prefetched) {
   $('client-name').textContent = currentUser.nombre;
@@ -1120,6 +1158,7 @@ async function loadClientData(prefetched) {
 function renderClientData(lista) {
   datosMostrados = true;
   const consultas = normEstados(lista);
+  clientConsultas = consultas;
 
   // Split: mis consultas (cliente→planet) vs de planet (planet→cliente)
   const mis = consultas.filter(c => c.direccion === 'cliente_a_planet');
@@ -1291,8 +1330,8 @@ function renderClientConsultaCard(c, dimmed, isPlanetQuery) {
 
   const replyHtml = canReply ? `
     <div class="reply-box">
-      <input type="text" placeholder="${grupo === 'espera' ? 'Escribí la info que pide Planet...' : 'Responder...'}" id="reply-${c.id}" onkeydown="if(event.key==='Enter')clientReply(${c.id})">
-      <button class="reply-send" onclick="clientReply(${c.id})" title="Enviar">
+      <input type="text" placeholder="${grupo === 'espera' ? 'Escribí la info que pide Planet...' : 'Responder...'}" id="reply-${c.id}" onkeydown="if(event.key==='Enter')clientReply(${c.id}, this.nextElementSibling)">
+      <button class="reply-send" onclick="clientReply(${c.id}, this)" title="Enviar">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
       </button>
     </div>` : '';
@@ -1313,27 +1352,30 @@ function renderClientConsultaCard(c, dimmed, isPlanetQuery) {
     </div>`;
 }
 
-async function clientReply(id) {
+async function clientReply(id, btn) {
   const input = $('reply-' + id);
   const texto = input.value.trim();
-  if (!texto) return;
+  if (!texto || input.disabled) return;
   input.disabled = true;
+  const listo = ocupado(btn);
+  tarjetaOcupada('card-' + id, true);
 
-  const res = await api({
-    action: 'responder',
-    id: id,
-    autor: currentUser.usuario,
-    nombre: currentUser.nombre,
-    texto: texto
-  });
+  const res = await api({ action: 'responder', id: id, texto: texto });
 
+  tarjetaOcupada('card-' + id, false);
+  listo();
   input.disabled = false;
   if (res.ok) {
     input.value = '';
-    toast('Mensaje enviado');
+    toast('✓ Mensaje enviado');
+    // Mismo cambio que hace el servidor: si Planet ya la estaba viendo, vuelve a Planet como pendiente
+    const c = clientConsultas.find(x => String(x.id) === String(id));
+    const cambios = (c && c.estado !== 'Abierto') ? { estado: 'Respuesta cliente' } : {};
+    aplicarLocal(clientConsultas, id, cambios, { autor: currentUser.usuario, nombre: currentUser.nombre, fecha: ahoraTexto(), texto });
+    renderClientData(clientConsultas);
     loadClientData();
   } else {
-    toast('Error: ' + (res.error || 'No se pudo enviar'));
+    toast('Error: ' + (res.error || 'No se pudo enviar') + ' — tocá ↻ antes de reenviar');
   }
 }
 
@@ -1357,8 +1399,8 @@ async function sendClientNewQuery() {
   if (!tracking || !tipo || !mensaje) { toast('Completá tracking, tipo de problema y mensaje'); return; }
   const asunto = buildAsunto(tracking, venta, currentUser.cliente, tipo);
 
-  $('nq-send').disabled = true;
-  $('nq-send').textContent = 'Enviando...';
+  if ($('nq-send').disabled) return;
+  const listoNq = ocupado($('nq-send'), 'Enviando...');
 
   const res = await api({
     action: 'nueva_consulta',
@@ -1370,8 +1412,7 @@ async function sendClientNewQuery() {
     mensaje: mensaje
   });
 
-  $('nq-send').disabled = false;
-  $('nq-send').textContent = 'Enviar consulta';
+  listoNq();
 
   if (res.ok) {
     closeClientNewQuery();
@@ -1585,9 +1626,9 @@ function renderTicketCard(c, isPlanetQuery) {
     if (grupo !== 'cerrado') {
       threadHtml += `
         <div class="thread-reply-bar">
-          <input class="thread-reply-input" placeholder="Responder..." id="preply-${c.id}" onkeydown="if(event.key==='Enter')planetReply(${c.id}, false)">
-          <button class="thread-reply-btn" onclick="planetReply(${c.id}, false)" title="Envía el mensaje; la consulta queda En proceso">Enviar</button>
-          <button class="thread-reply-btn btn-wait" onclick="planetReply(${c.id}, true)" title="Envía el mensaje y pasa la consulta a Esperando info">Enviar y pedir info</button>
+          <input class="thread-reply-input" placeholder="Responder..." id="preply-${c.id}" onkeydown="if(event.key==='Enter')planetReply(${c.id}, false, this.nextElementSibling)">
+          <button class="thread-reply-btn" onclick="planetReply(${c.id}, false, this)" title="Envía el mensaje; la consulta queda En proceso">Enviar</button>
+          <button class="thread-reply-btn btn-wait" onclick="planetReply(${c.id}, true, this)" title="Envía el mensaje y pasa la consulta a Esperando info">Enviar y pedir info</button>
         </div>`;
     }
     threadHtml += '</div>';
@@ -1598,19 +1639,19 @@ function renderTicketCard(c, isPlanetQuery) {
   if (grupo === 'pendiente') {
     actionsHtml = `
       <div class="status-actions">
-        <button class="status-btn btn-proceso" onclick="changeStatus(${c.id},'En proceso')">Tomar → En proceso</button>
-        <button class="status-btn btn-cerrar" onclick="changeStatus(${c.id},'Cerrado')">Cerrar</button>
+        <button class="status-btn btn-proceso" onclick="changeStatus(${c.id},'En proceso',this)">Tomar → En proceso</button>
+        <button class="status-btn btn-cerrar" onclick="changeStatus(${c.id},'Cerrado',this)">Cerrar</button>
       </div>`;
   } else if (grupo === 'proceso') {
     actionsHtml = `
       <div class="status-actions">
-        <button class="status-btn btn-cerrar" onclick="changeStatus(${c.id},'Cerrado')">Cerrar</button>
+        <button class="status-btn btn-cerrar" onclick="changeStatus(${c.id},'Cerrado',this)">Cerrar</button>
       </div>`;
   } else if (grupo === 'espera') {
     actionsHtml = `
       <div class="status-actions">
-        <button class="status-btn btn-proceso" onclick="changeStatus(${c.id},'En proceso')">Retomar → En proceso</button>
-        <button class="status-btn btn-cerrar" onclick="changeStatus(${c.id},'Cerrado')">Cerrar</button>
+        <button class="status-btn btn-proceso" onclick="changeStatus(${c.id},'En proceso',this)">Retomar → En proceso</button>
+        <button class="status-btn btn-cerrar" onclick="changeStatus(${c.id},'Cerrado',this)">Cerrar</button>
       </div>`;
   }
 
@@ -1642,39 +1683,54 @@ function renderTicketCard(c, isPlanetQuery) {
     </div>`;
 }
 
-async function planetReply(id, pedirInfo) {
+async function planetReply(id, pedirInfo, btn) {
   const input = $('preply-' + id);
   const texto = input.value.trim();
+  if (input.disabled) return;
   if (!texto) { toast(pedirInfo ? 'Escribí qué info necesitás del cliente' : 'Escribí un mensaje'); return; }
-  const btns = input.parentElement.querySelectorAll('button');
+  const cardId = 'tcard-' + id;
   input.disabled = true;
-  btns.forEach(b => b.disabled = true);
+  const listo = ocupado(btn, 'Enviando...');
+  tarjetaOcupada(cardId, true);
 
   const params = { action: 'responder', id: id, texto: texto };
   if (pedirInfo) params.esperar_info = '1';
   const res = await api(params);
 
+  tarjetaOcupada(cardId, false);
+  listo();
   input.disabled = false;
-  btns.forEach(b => b.disabled = false);
 
   if (res.ok) {
     input.value = '';
-    toast(pedirInfo ? 'Mensaje enviado · Esperando info del cliente' : 'Mensaje enviado');
+    toast(pedirInfo ? '✓ Mensaje enviado · Esperando info del cliente' : '✓ Mensaje enviado');
+    // Mismo cambio que hace el servidor
+    const c = allConsultas.find(x => String(x.id) === String(id));
+    let estado = null;
+    if (pedirInfo) estado = 'Esperando info';
+    else if (c && (c.estado === 'Abierto' || c.estado === 'Respuesta cliente')) estado = 'En proceso';
+    aplicarLocal(allConsultas, id, estado ? { estado, atendido_por: currentUser.nombre } : {},
+      { autor: currentUser.usuario, nombre: currentUser.nombre, fecha: ahoraTexto(), texto });
+    renderPlanetData(allConsultas);
     loadPlanetData();
   } else {
-    toast('Error: ' + (res.error || 'No se pudo enviar'));
+    toast('Error: ' + (res.error || 'No se pudo enviar') + ' — tocá ↻ antes de reenviar');
   }
 }
 
-async function changeStatus(id, estado) {
-  const res = await api({
-    action: 'cambiar_estado',
-    id: id,
-    estado: estado,
-    atendido_por: currentUser.nombre
-  });
+async function changeStatus(id, estado, btn) {
+  const cardId = 'tcard-' + id;
+  const listo = ocupado(btn, estado === 'Cerrado' ? 'Cerrando...' : 'Guardando...');
+  tarjetaOcupada(cardId, true);
+
+  const res = await api({ action: 'cambiar_estado', id: id, estado: estado, atendido_por: currentUser.nombre });
+
+  tarjetaOcupada(cardId, false);
+  listo();
   if (res.ok) {
-    toast('Estado cambiado a ' + estadoLabel(estado));
+    toast('✓ Estado cambiado a ' + estadoLabel(estado));
+    aplicarLocal(allConsultas, id, { estado, atendido_por: currentUser.nombre });
+    renderPlanetData(allConsultas);
     loadPlanetData();
   } else {
     toast('Error: ' + (res.error || 'No se pudo cambiar'));
@@ -1690,7 +1746,8 @@ async function sendPlanetNewQuery() {
   if (!tracking || !tipo || !mensaje || !cliente) { toast('Completá tracking, tipo de problema y mensaje'); return; }
   const asunto = buildAsunto(tracking, venta, cliente, tipo);
 
-  $('pnq-send').disabled = true;
+  if ($('pnq-send').disabled) return;
+  const listoPnq = ocupado($('pnq-send'), 'Enviando...');
 
   const res = await api({
     action: 'nueva_consulta',
@@ -1702,7 +1759,7 @@ async function sendPlanetNewQuery() {
     mensaje: mensaje
   });
 
-  $('pnq-send').disabled = false;
+  listoPnq();
 
   if (res.ok) {
     $('pnq-tracking').value = '';
