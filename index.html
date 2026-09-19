@@ -41,6 +41,8 @@
   --wait-bg: #ecfeff;
   --wait-text: #155e75;
   --tab-bar-bg: #ffffff;
+  --toast-bg: #0f172a; --toast-desc: #cbd5e1;
+  --skel: #e2e8f0; --skel-hi: #f8fafc;
   --tab-bar-border: #e2e8f0;
   --overlay: rgba(15, 23, 42, 0.5);
   --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
@@ -65,6 +67,8 @@
     --purple: #a78bfa; --purple-bg: #2e1065; --purple-text: #c4b5fd;
     --wait: #22d3ee; --wait-bg: #164e63; --wait-text: #a5f3fc;
     --tab-bar-bg: #151a24; --tab-bar-border: #2a3040;
+    --toast-bg: #2a3346; --toast-desc: #a9b6c8;
+    --skel: #242b3a; --skel-hi: #2f3748;
     --overlay: rgba(0, 0, 0, 0.6);
     --shadow-sm: 0 1px 2px rgba(0,0,0,0.2);
     --shadow-md: 0 4px 12px rgba(0,0,0,0.3);
@@ -84,6 +88,8 @@
   --purple: #a78bfa; --purple-bg: #2e1065; --purple-text: #c4b5fd;
   --wait: #22d3ee; --wait-bg: #164e63; --wait-text: #a5f3fc;
   --tab-bar-bg: #151a24; --tab-bar-border: #2a3040;
+  --toast-bg: #2a3346; --toast-desc: #a9b6c8;
+  --skel: #242b3a; --skel-hi: #2f3748;
   --overlay: rgba(0,0,0,0.6);
   --shadow-sm: 0 1px 2px rgba(0,0,0,0.2);
   --shadow-md: 0 4px 12px rgba(0,0,0,0.3);
@@ -222,7 +228,7 @@ body {
 .card-date { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .card-chevron {
   margin-left: auto; width: 18px; height: 18px; flex-shrink: 0;
-  color: var(--text-muted); transition: transform 0.2s;
+  color: var(--text-muted); transition: transform 0.5s var(--ease-spring);
 }
 .open > .card-summary .card-chevron,
 .open .ticket-body > .card-summary .card-chevron { transform: rotate(180deg); }
@@ -400,22 +406,27 @@ body {
 
 /* ── SUBTAB BAR (client) ── */
 .subtab-bar {
-  display: flex; gap: 0; margin-bottom: 16px;
-  border-radius: var(--radius-sm); overflow: hidden; border: 1.5px solid var(--card-border);
+  position: relative; display: flex; gap: 0; margin-bottom: 16px; padding: 3px;
+  border-radius: 10px; border: 1.5px solid var(--card-border); background: var(--card);
 }
 .subtab {
-  flex: 1; padding: 10px; font-family: var(--font);
+  flex: 1; padding: 9px 8px; font-family: var(--font);
   font-size: 13px; font-weight: 600; text-align: center;
-  border: none; background: var(--card); color: var(--text-muted);
-  cursor: pointer; transition: all 0.15s; position: relative;
+  border: none; background: none; color: var(--text-muted); border-radius: 7px;
+  cursor: pointer; transition: color 0.25s; position: relative; overflow: hidden;
 }
-.subtab.active { background: var(--primary); color: #fff; }
-.subtab:not(:last-child) { border-right: 1.5px solid var(--card-border); }
+.subtab.active { color: #fff; }
+.subtab-bar:not(.has-ind) .subtab.active { background: var(--primary); }
+.subtab-bar > .tab-ind {
+  position: absolute; top: 3px; bottom: 3px; left: 0; width: 0;
+  border-radius: 7px; background: var(--primary);
+}
 .subtab .subtab-badge {
   display: inline-block; min-width: 18px; padding: 1px 5px;
   font-size: 10px; font-weight: 700; border-radius: 10px;
   margin-left: 5px; vertical-align: middle;
 }
+.subtab .subtab-badge[hidden] { display: none; }
 .subtab.active .subtab-badge { background: rgba(255,255,255,0.25); color: #fff; }
 .subtab:not(.active) .subtab-badge { background: var(--danger); color: #fff; }
 .client-sub { display: none; }
@@ -475,6 +486,14 @@ body {
   width: 3px; border-radius: 0 2px 2px 0; background: var(--primary);
 }
 .sidebar-item svg { width: 18px; height: 18px; flex-shrink: 0; }
+.sidebar { position: relative; }
+.sidebar > .tab-ind { position: absolute; top: 0; left: 0; right: 0; height: 0; background: var(--primary-light); }
+.sidebar > .tab-ind::before {
+  content: ''; position: absolute; left: 0; top: 4px; bottom: 4px;
+  width: 3px; border-radius: 0 2px 2px 0; background: var(--primary);
+}
+.sidebar.has-ind .sidebar-item.active { background: transparent; }
+.sidebar.has-ind .sidebar-item.active::before { display: none; }
 .sidebar-badge {
   margin-left: auto; font-size: 11px; font-weight: 700;
   background: var(--danger); color: #fff; padding: 1px 7px;
@@ -617,15 +636,78 @@ body {
 }
 .card-busy .ticket-details, .card-busy .consulta-detail, .card-busy .reply-box { opacity: 0.6; }
 
-/* ── TOAST ── */
-.toast {
-  position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%);
-  background: var(--text); color: var(--surface); padding: 10px 20px;
-  border-radius: 20px; font-size: 13px; font-weight: 500;
-  z-index: 200; opacity: 0; transition: opacity 0.3s;
-  pointer-events: none;
+/* ── ANIMACIONES ── */
+:root { --ease-spring: cubic-bezier(.34,1.4,.64,1); }
+.screen.active { animation: aparecer 0.3s ease-out; }
+@keyframes aparecer { from { opacity: 0; } }
+.fab:active { transform: scale(0.92); }
+
+/* Aviso (toast) que se estira como líquido */
+.sl-host {
+  position: fixed; top: calc(14px + env(safe-area-inset-top, 0px)); left: 0; right: 0;
+  height: 0; z-index: 400; pointer-events: none;
 }
-.toast.show { opacity: 1; }
+.sl { position: absolute; left: 50%; top: 0; }
+.sl-goo { position: absolute; left: 0; top: 0; filter: url(#goo) drop-shadow(0 6px 14px rgba(0,0,0,0.18)); }
+.sl-head, .sl-body { position: absolute; left: 0; top: 0; background: var(--toast-bg); transform: translateX(-50%); }
+.sl-head { height: 36px; width: 36px; border-radius: 18px; }
+.sl-body { top: 28px; width: 36px; height: 0; border-radius: 16px; }
+.sl-content { position: absolute; left: 0; top: 0; transform: translateX(-50%); }
+.sl-row {
+  height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 14px 0 6px;
+  white-space: nowrap; max-width: calc(100vw - 32px);
+}
+.sl-badge { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; flex-shrink: 0; }
+.sl-badge svg { width: 14px; height: 14px; }
+.sl-title { font-size: 13.5px; font-weight: 600; opacity: 0; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.sl-desc {
+  position: absolute; top: 40px; left: 50%; transform: translateX(-50%);
+  padding: 0 16px; font-size: 13px; line-height: 1.4; color: var(--toast-desc); opacity: 0;
+}
+.t-success .sl-badge { background: rgba(52,211,153,.18); color: #34d399; } .t-success .sl-title { color: #6ee7b7; }
+.t-error .sl-badge { background: rgba(248,113,113,.18); color: #f87171; } .t-error .sl-title { color: #fca5a5; }
+.t-warn .sl-badge { background: rgba(251,191,36,.18); color: #fbbf24; } .t-warn .sl-title { color: #fcd34d; }
+.t-info .sl-badge { background: rgba(96,165,250,.2); color: #60a5fa; } .t-info .sl-title { color: #93c5fd; }
+.t-load .sl-badge { color: #e2e8f0; } .t-load .sl-title { color: #e2e8f0; }
+.t-load .sl-badge svg { animation: spin 0.8s linear infinite; }
+
+/* Esqueleto mientras carga */
+.skel-list { display: flex; flex-direction: column; gap: 10px; }
+.skel-card {
+  background: var(--card); border: 1px solid var(--card-border); border-radius: var(--radius);
+  padding: 14px; display: flex; flex-direction: column; gap: 10px;
+}
+.skel-top { display: flex; gap: 10px; align-items: center; }
+.skel {
+  display: block; height: 11px; border-radius: 6px;
+  background: linear-gradient(90deg, var(--skel) 0%, var(--skel-hi) 45%, var(--skel) 90%);
+  background-size: 250% 100%; animation: brillo 1.3s ease-in-out infinite;
+}
+@keyframes brillo { from { background-position: 100% 0; } to { background-position: -150% 0; } }
+
+/* Consulta nueva o con novedades */
+.card-nueva { animation: resaltar 1.8s ease-out 0.25s backwards; }
+@keyframes resaltar { from { background-color: var(--primary-light); } }
+
+/* Onda al tocar botones */
+.btn-primary, .btn-send, .reply-send, .thread-reply-btn, .status-btn, .client-chip, .icon-btn { position: relative; overflow: hidden; }
+.fab { overflow: hidden; }
+.ripple {
+  position: absolute; border-radius: 50%; pointer-events: none;
+  background: currentColor; opacity: 0; transform: scale(0);
+}
+
+/* Números que ruedan */
+.stat-number.rodando { display: inline-flex; height: 1em; overflow: hidden; }
+.stat-number .dg { display: block; height: 1em; overflow: hidden; }
+.stat-number .strip { display: flex; flex-direction: column; transition: transform 0.9s var(--ease-spring); }
+.stat-number .strip span { display: block; height: 1em; line-height: 1; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+@media (prefers-reduced-motion: reduce) {
+  .screen.active, .card-nueva, .skel, .t-load .sl-badge svg { animation: none; }
+  .card-chevron, .stat-number .strip { transition: none; }
+}
 
 /* ── EMPTY STATE ── */
 .empty-state {
@@ -950,8 +1032,14 @@ body {
 </div>
 <input type="file" id="img-input" accept="image/*" multiple hidden>
 
-<!-- TOAST -->
-<div class="toast" id="toast"></div>
+<!-- Filtro del aviso "líquido" (une la cabeza y el cuerpo del aviso como una gota) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <filter id="goo" x="-50%" y="-50%" width="200%" height="200%">
+    <feGaussianBlur in="SourceGraphic" stdDeviation="6" result="b"/>
+    <feColorMatrix in="b" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 22 -10" result="g"/>
+    <feComposite in="SourceGraphic" in2="g" operator="atop"/>
+  </filter>
+</svg>
 
 <script>
 // ── CONFIG ──
@@ -970,11 +1058,292 @@ function show(id) {
   $(id).classList.add('active');
 }
 
-function toast(msg) {
-  const t = $('toast');
-  t.textContent = msg;
-  t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 2500);
+// ═══ ANIMACIONES ═══
+// Sin librerías: animaciones del navegador + curvas de "resorte" (rebote suave).
+const SIN_MOVIMIENTO = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+const EASE_OUT = 'cubic-bezier(.22,1,.36,1)';
+const LINEAR_OK = !!(window.CSS && CSS.supports && CSS.supports('transition-timing-function', 'linear(0, 1)'));
+const _resortes = {};
+
+// Simula un resorte y lo convierte en una curva CSS linear(); devuelve { easing, duracion }
+function resorte(rigidez = 260, freno = 22) {
+  const k = rigidez + ':' + freno;
+  if (_resortes[k]) return _resortes[k];
+  let x = 0, v = 0, t = 0;
+  const dt = 1 / 240, pts = [0];
+  while (t < 2.5) {
+    v += (-rigidez * (x - 1) - freno * v) * dt;
+    x += v * dt; t += dt;
+    pts.push(x);
+    if (t > 0.2 && Math.abs(x - 1) < 0.002 && Math.abs(v) < 0.02) break;
+  }
+  const paso = Math.max(1, Math.round(pts.length / 60)), s = [];
+  for (let i = 0; i < pts.length; i += paso) s.push(pts[i].toFixed(4));
+  s.push('1');
+  return _resortes[k] = {
+    easing: LINEAR_OK ? `linear(${s.join(',')})` : 'cubic-bezier(.34,1.4,.64,1)',
+    duracion: Math.round(t * 1000)
+  };
+}
+if (LINEAR_OK) document.documentElement.style.setProperty('--ease-spring', resorte(170, 20).easing);
+
+// Anima un elemento. mantener=true deja aplicado el valor final; false vuelve a su estilo normal.
+function anim(el, kf, o = {}) {
+  if (!el || !el.animate) return Promise.resolve();
+  el.getAnimations().forEach(a => {
+    const deCss = (window.CSSAnimation && a instanceof CSSAnimation) || (window.CSSTransition && a instanceof CSSTransition);
+    if (!deCss) a.cancel();
+  });
+  if (o.mantener !== false) for (const p in kf) el.style[p] = kf[p][kf[p].length - 1];
+  if (SIN_MOVIMIENTO) return Promise.resolve();
+  let duracion = o.duracion || 300, easing = o.easing || EASE_OUT;
+  if (o.resorte) { const r = resorte(...o.resorte); duracion = r.duracion; easing = r.easing; }
+  const a = el.animate(kf, { duration: duracion, delay: o.retraso || 0, easing, fill: o.fill || 'backwards' });
+  return a.finished.then(() => {}, () => {});
+}
+function esperar(ms) { return new Promise(r => setTimeout(r, SIN_MOVIMIENTO ? 0 : ms)); }
+
+// Los elementos entran uno detrás del otro
+function entrada(elems, desde = 'translateY(10px)', paso = 40) {
+  Array.from(elems || []).slice(0, 14).forEach((e, i) => {
+    const op = getComputedStyle(e).opacity;
+    anim(e, { opacity: [0, op], transform: [desde, 'none'] }, { duracion: 380, retraso: i * paso, mantener: false });
+  });
+}
+// Tiembla para avisar que falta algo
+function sacudir(el) {
+  anim(el, { transform: ['translateX(0)', 'translateX(-7px)', 'translateX(6px)', 'translateX(-4px)', 'translateX(2px)', 'translateX(0)'] },
+    { duracion: 420, easing: 'ease-out', mantener: false });
+}
+function sacudirVacios(ids) {
+  ids.forEach(id => { const el = $(id); if (el && !String(el.value || '').trim()) sacudir(el); });
+}
+// Salta (para contadores que suben)
+function saltar(el) { anim(el, { transform: ['scale(0.4)', 'scale(1)'] }, { resorte: [500, 14], mantener: false }); }
+// Resalta una tarjeta nueva o con novedades
+function resaltar(el) {
+  if (!el) return;
+  anim(el, { transform: ['scale(0.97)', 'none'] }, { resorte: [300, 20], mantener: false });
+  el.classList.remove('card-nueva'); void el.offsetWidth; el.classList.add('card-nueva');
+  el.addEventListener('animationend', () => el.classList.remove('card-nueva'), { once: true });
+}
+
+// ── Aviso "líquido": nace como un punto, se estira y abre la explicación debajo ──
+const TOAST_ICONOS = {
+  success: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5 9-10"/></svg>',
+  error: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 7v6M12 17h.01"/></svg>',
+  warn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 7v6M12 17h.01"/></svg>',
+  info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 11v6M12 7h.01"/></svg>',
+  load: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 3a9 9 0 1 0 9 9"/></svg>'
+};
+const TOAST_TITULOS = { success: 'Listo', error: 'No se pudo completar', warn: 'Falta completar', info: 'Aviso' };
+
+// Convierte los textos de siempre ("✓ Mensaje enviado", "Error: ...") en tipo + título + detalle
+function armarToast(msg) {
+  let s = String(msg || '').trim(), tipo = 'info', titulo = s, desc = '';
+  if (/^✓/.test(s)) { tipo = 'success'; s = s.replace(/^✓\s*/, ''); }
+  else if (/^📎/.test(s)) { tipo = 'info'; s = s.replace(/^📎\s*/, ''); }
+  else if (/^(Error|No se pudo|No podés)/i.test(s)) tipo = 'error';
+  else if (/^(Completá|Ingresá|Escribí|Máximo|Solo se|Sesión vencida)/i.test(s)) tipo = 'warn';
+  else if (/(creada|creado|enviada|actualizado|eliminado|cambiado)/i.test(s)) tipo = 'success';
+  titulo = s;
+  let partes = s.split(' — ');
+  titulo = partes[0];
+  const extra = partes.slice(1).join('. ');
+  const dosPuntos = titulo.indexOf(': ');
+  if (dosPuntos > 0 && dosPuntos < 32) { desc = titulo.slice(dosPuntos + 2); titulo = titulo.slice(0, dosPuntos); }
+  else if (titulo.indexOf(' · ') > 0) { const i = titulo.indexOf(' · '); desc = titulo.slice(i + 3); titulo = titulo.slice(0, i); }
+  if (titulo === 'Error') titulo = TOAST_TITULOS.error;
+  if (extra) desc = (desc ? desc.replace(/\.?$/, '. ') : '') + extra.charAt(0).toUpperCase() + extra.slice(1);
+  if (titulo.length > 34 && !desc) { desc = titulo; titulo = TOAST_TITULOS[tipo]; }
+  return { tipo, titulo, desc };
+}
+
+let _t = null, _tCadena = Promise.resolve(), _tGen = 0;
+function toast(msg, opciones) { mostrarToast(Object.assign(armarToast(msg), opciones || {})); }
+toast.cargando = titulo => mostrarToast({ tipo: 'load', titulo, desc: '', fijo: true });
+
+function mostrarToast(o) {
+  const gen = ++_tGen;
+  _tCadena = _tCadena.then(() => pasoToast(o, gen)).catch(() => {});
+}
+function hostToast() {
+  let h = document.querySelector('.sl-host');
+  if (!h) {
+    h = document.createElement('div');
+    h.className = 'sl-host';
+    h.setAttribute('role', 'status');
+    h.setAttribute('aria-live', 'polite');
+    document.body.appendChild(h);
+  }
+  return h;
+}
+async function pasoToast(o, gen) {
+  if (!_t) {
+    const el = document.createElement('div');
+    el.className = 'sl';
+    el.innerHTML = '<div class="sl-goo"><div class="sl-head"></div><div class="sl-body"></div></div>' +
+      '<div class="sl-content"><div class="sl-row"><span class="sl-badge"></span><span class="sl-title"></span></div></div>' +
+      '<div class="sl-desc"></div>';
+    hostToast().appendChild(el);
+    _t = { el, ancho: 36, cuerpo: false };
+    anim(el, { transform: ['scale(0.3)', 'scale(1)'], opacity: [0, 1] }, { resorte: [400, 22] });
+    await esperar(80);
+  } else if (_t.cuerpo) {
+    await cerrarCuerpoToast();
+  }
+  await cabezaToast(o.tipo, o.titulo);
+  if (o.desc) { await esperar(100); await abrirCuerpoToast(o.desc); }
+  if (!o.fijo) {
+    const dura = (o.tipo === 'error' ? 4500 : 2600) + (o.desc ? 1200 : 0);
+    setTimeout(() => {
+      if (gen === _tGen) _tCadena = _tCadena.then(() => (gen === _tGen ? cerrarToast() : null)).catch(() => {});
+    }, dura);
+  }
+}
+async function cabezaToast(tipo, titulo) {
+  const el = _t.el, q = s => el.querySelector(s);
+  el.className = 'sl t-' + tipo;
+  q('.sl-badge').innerHTML = TOAST_ICONOS[tipo] || TOAST_ICONOS.info;
+  q('.sl-title').textContent = titulo;
+  const w = Math.ceil(q('.sl-row').getBoundingClientRect().width);
+  anim(q('.sl-title'), { opacity: [0, 1], transform: ['translateX(-6px)', 'none'] }, { duracion: 260, retraso: 110 });
+  await anim(q('.sl-head'), { width: [_t.ancho + 'px', w + 'px'] }, { resorte: [320, 24] });
+  _t.ancho = w;
+}
+async function abrirCuerpoToast(desc) {
+  const el = _t.el, d = el.querySelector('.sl-desc'), body = el.querySelector('.sl-body');
+  const dw = Math.max(_t.ancho, Math.min(320, window.innerWidth - 32));
+  d.style.width = dw + 'px';
+  d.textContent = desc;
+  const h = Math.ceil(d.getBoundingClientRect().height) + 20;
+  _t.cuerpo = true;
+  anim(d, { opacity: [0, 1], transform: ['translateX(-50%) translateY(-6px)', 'translateX(-50%)'] }, { duracion: 280, retraso: 130 });
+  await anim(body, { width: [_t.ancho + 'px', dw + 'px'], height: ['0px', h + 'px'] }, { resorte: [260, 22] });
+}
+async function cerrarCuerpoToast() {
+  const el = _t.el, body = el.querySelector('.sl-body');
+  anim(el.querySelector('.sl-desc'), { opacity: [1, 0] }, { duracion: 140 });
+  await anim(body, { width: [body.style.width || _t.ancho + 'px', _t.ancho + 'px'], height: [body.style.height || '0px', '0px'] }, { duracion: 220 });
+  _t.cuerpo = false;
+}
+async function cerrarToast() {
+  if (!_t) return;
+  if (_t.cuerpo) await cerrarCuerpoToast();
+  const el = _t.el;
+  anim(el.querySelector('.sl-title'), { opacity: [1, 0] }, { duracion: 140 });
+  await anim(el.querySelector('.sl-head'), { width: [_t.ancho + 'px', '36px'] }, { duracion: 220 });
+  await anim(el, { transform: ['scale(1)', 'scale(0.4)'], opacity: [1, 0] }, { duracion: 180 });
+  el.remove();
+  _t = null;
+}
+
+// ── Esqueleto brillante mientras cargan las consultas ──
+function esqueletoHtml(n = 3) {
+  const a = [86, 72, 80], b = [52, 40, 60];
+  let h = '<div class="skel-list" aria-label="Cargando...">';
+  for (let i = 0; i < n; i++) {
+    h += `<div class="skel-card"><div class="skel-top"><span class="skel" style="width:78px;height:18px;border-radius:10px"></span><span class="skel" style="width:96px"></span></div>` +
+      `<span class="skel" style="width:${a[i % 3]}%"></span><span class="skel" style="width:${b[i % 3]}%"></span></div>`;
+  }
+  return h + '</div>';
+}
+
+// ── Pestañas y menú lateral: el fondo azul se desliza hasta la opción elegida ──
+function moverIndicador(barra, activo, animar) {
+  if (!barra || !activo || !activo.offsetWidth) return;
+  let ind = barra.querySelector(':scope > .tab-ind');
+  if (!ind) { ind = document.createElement('div'); ind.className = 'tab-ind'; barra.prepend(ind); }
+  barra.classList.add('has-ind');
+  const vertical = barra.classList.contains('sidebar');
+  const tr = vertical ? `translateY(${activo.offsetTop}px)` : `translateX(${activo.offsetLeft}px)`;
+  const prop = vertical ? 'height' : 'width';
+  const tam = (vertical ? activo.offsetHeight : activo.offsetWidth) + 'px';
+  if (!animar || !ind.style.transform) { ind.style.transform = tr; ind.style[prop] = tam; return; }
+  anim(ind, { transform: [ind.style.transform, tr], [prop]: [ind.style[prop], tam] }, { resorte: [300, 26] });
+}
+function acomodarIndicadores() {
+  document.querySelectorAll('.subtab-bar').forEach(b => moverIndicador(b, b.querySelector('.subtab.active'), false));
+  document.querySelectorAll('.sidebar').forEach(b => moverIndicador(b, b.querySelector('.sidebar-item.active'), false));
+}
+window.addEventListener('resize', acomodarIndicadores);
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(acomodarIndicadores);
+
+// ── Números que ruedan como un cuentakilómetros ──
+const _numsPrevios = {};
+function rodarNumeros(contId) {
+  const cont = $(contId);
+  if (!cont) return;
+  const els = Array.from(cont.querySelectorAll('.stat-number'));
+  const prev = _numsPrevios[contId];
+  _numsPrevios[contId] = els.map(e => e.textContent.trim());
+  if (SIN_MOVIMIENTO) return;
+  els.forEach((el, i) => {
+    const s = el.textContent.trim(), p = prev ? prev[i] : null;
+    if (!/^\d+$/.test(s) || p === s) return;
+    const desde = (p && p.length === s.length) ? p : '0'.repeat(s.length);
+    const tira = '0123456789'.split('').map(d => `<span>${d}</span>`).join('');
+    el.classList.add('rodando');
+    el.innerHTML = `<span class="sr-only">${s}</span>` + s.split('').map((d, k) =>
+      `<span class="dg" aria-hidden="true"><span class="strip" style="transform:translateY(-${desde[k]}em)">${tira}</span></span>`).join('');
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      el.querySelectorAll('.strip').forEach((st, k) => {
+        st.style.transitionDelay = (k * 80) + 'ms';
+        st.style.transform = `translateY(-${s[k]}em)`;
+      });
+    }));
+  });
+}
+
+// ── Contadores (globitos) que saltan cuando suben ──
+function ponerContador(el, n) {
+  if (!el) return;
+  const antes = el.dataset.prev === undefined ? null : Number(el.dataset.prev);
+  el.textContent = n;
+  el.dataset.prev = n;
+  if (antes !== null && n > antes) saltar(el);
+}
+
+// ── Consultas nuevas o con mensajes nuevos: entran resaltadas ──
+let _vistos = null;  // id → { n: cantidad de mensajes, estado }
+function marcarNovedades(lista, prefijo) {
+  const antes = _vistos;
+  _vistos = new Map(lista.map(c => [String(c.id), { n: (c.mensajes || []).length, estado: c.estado }]));
+  if (!antes) return;
+  lista.forEach(c => {
+    const id = String(c.id), el = $(prefijo + id);
+    if (!el) return;
+    const a = antes.get(id), ahora = _vistos.get(id);
+    if (!a) return resaltar(el);
+    if (ahora.n > a.n && el.classList.contains('open')) {
+      const msgs = el.querySelectorAll('.timeline-item, .thread-msg');
+      entrada(Array.from(msgs).slice(-(ahora.n - a.n)), 'translateY(8px) scale(0.97)', 60);
+    } else if (ahora.n > a.n || ahora.estado !== a.estado) {
+      resaltar(el);
+    }
+  });
+}
+
+// ── Onda que sale desde el dedo al tocar un botón ──
+document.addEventListener('pointerdown', e => {
+  if (SIN_MOVIMIENTO) return;
+  const b = e.target.closest('.btn-primary, .btn-send, .reply-send, .thread-reply-btn, .fab, .status-btn, .client-chip, .subtab, .icon-btn');
+  if (!b || b.disabled) return;
+  const r = b.getBoundingClientRect(), tam = Math.max(r.width, r.height) * 2;
+  const o = document.createElement('span');
+  o.className = 'ripple';
+  o.style.cssText = `width:${tam}px;height:${tam}px;left:${e.clientX - r.left - tam / 2}px;top:${e.clientY - r.top - tam / 2}px`;
+  b.appendChild(o);
+  o.animate({ transform: ['scale(0)', 'scale(1)'], opacity: [0.3, 0] }, { duration: 600, easing: 'ease-out' }).finished
+    .then(() => o.remove(), () => o.remove());
+});
+
+// El avioncito del botón Enviar sale volando
+function volarAvion(btn) {
+  const svg = btn && btn.querySelector('svg');
+  if (!svg) return Promise.resolve();
+  return anim(svg, { transform: ['none', 'translate(16px,-16px) rotate(8deg)'], opacity: [1, 0] },
+    { duracion: 200, easing: 'cubic-bezier(.5,0,.9,.5)', mantener: false, fill: 'forwards' });
 }
 
 function esc(s) {
@@ -1093,6 +1462,7 @@ async function doLogin() {
   if (!user || !pass) {
     $('login-error').textContent = 'Completá usuario y contraseña';
     $('login-error').style.display = 'block';
+    sacudirVacios(['login-user', 'login-pass']);
     return;
   }
   $('login-btn').disabled = true;
@@ -1108,6 +1478,7 @@ async function doLogin() {
   if (!res.ok) {
     $('login-error').textContent = res.error || 'Error al ingresar';
     $('login-error').style.display = 'block';
+    sacudir(document.querySelector('.login-form'));
     return;
   }
 
@@ -1131,6 +1502,8 @@ function doLogout(sessionAlreadyInvalid) {
   borrarCache();
   currentUser = null;
   datosMostrados = false;
+  _vistos = null;
+  Object.keys(_numsPrevios).forEach(k => delete _numsPrevios[k]);
   try { localStorage.removeItem('planet_user'); } catch(e) {}
   $('login-user').value = '';
   $('login-pass').value = '';
@@ -1323,6 +1696,7 @@ function initClientView(prefetched) {
   $('client-avatar').textContent = currentUser.nombre[0];
   $('client-avatar').style.background = avatarColor(currentUser.nombre);
   show('screen-client');
+  acomodarIndicadores();
   if (!prefetched) {
     const cached = leerCache();
     if (cached) renderClientData(cached);
@@ -1334,8 +1708,8 @@ async function loadClientData(prefetched) {
   let lista = prefetched;
   if (!lista) {
     if (!datosMostrados) {
-      $('client-mis-list').innerHTML = '<div class="spinner"></div>';
-      $('client-planet-list').innerHTML = '<div class="spinner"></div>';
+      $('client-mis-list').innerHTML = esqueletoHtml(3);
+      $('client-planet-list').innerHTML = esqueletoHtml(2);
     }
     setActualizando('client-reload', true);
     const res = await api({ action: 'consultas', cliente: currentUser.cliente });
@@ -1353,6 +1727,7 @@ async function loadClientData(prefetched) {
 }
 
 function renderClientData(lista) {
+  const primeraVez = !datosMostrados;
   datosMostrados = true;
   const consultas = normEstados(lista);
   clientConsultas = consultas;
@@ -1370,6 +1745,7 @@ function renderClientData(lista) {
     <div class="stat-card"><div class="stat-number" style="color:var(--wait)">${esperanMis}</div><div class="stat-label">Esperan tu respuesta</div></div>
     <div class="stat-card"><div class="stat-number" style="color:var(--closed)">${cuenta(mis,'cerrado')}</div><div class="stat-label">Cerradas</div></div>
   `;
+  rodarNumeros('client-stats');
 
   // Badges de las pestañas: consultas que esperan respuesta del cliente
   setBadge('client-mis-badge', esperanMis);
@@ -1381,13 +1757,21 @@ function renderClientData(lista) {
 
   renderClientList(mis, 'client-mis-list', false, 'No tenés consultas todavía');
   renderClientList(dePlanet, 'client-planet-list', true, 'No hay consultas de Planet');
+
+  if (primeraVez) {
+    entrada($('client-mis-list').children);
+    entrada($('client-planet-list').children);
+  }
+  marcarNovedades(consultas, 'card-');
 }
 
 function setBadge(id, n) {
   const b = $(id);
   if (!b) return;
+  const antes = b.hidden ? 0 : Number(b.textContent) || 0;
   b.textContent = n;
   b.hidden = !(n > 0);
+  if (n > antes && datosMostrados) saltar(b);
 }
 
 function alertEsperan(texto) {
@@ -1426,8 +1810,23 @@ const openCards = new Set();
 function toggleCard(elId) {
   const el = $(elId);
   if (!el) return;
-  el.classList.toggle('open');
-  if (el.classList.contains('open')) openCards.add(elId); else openCards.delete(elId);
+  const abrir = !el.classList.contains('open');
+  const h0 = el.offsetHeight;
+  el.classList.toggle('open', abrir);
+  const h1 = el.offsetHeight;
+  if (abrir) openCards.add(elId); else openCards.delete(elId);
+  if (SIN_MOVIMIENTO) return;
+  // Al cerrar, el contenido sigue visible mientras la tarjeta se achica
+  if (!abrir) el.classList.add('open');
+  const turno = el._turno = (el._turno || 0) + 1;
+  el.style.overflow = 'hidden';
+  anim(el, { height: [h0 + 'px', h1 + 'px'] }, abrir ? { resorte: [240, 22], mantener: false } : { duracion: 220, mantener: false })
+    .then(() => {
+      if (el._turno !== turno) return;
+      el.style.overflow = '';
+      if (!abrir) el.classList.remove('open');
+    });
+  if (abrir) entrada(el.querySelectorAll('.timeline-item, .thread-msg, .status-actions, .thread-reply-bar, .reply-box'), 'translateY(8px)', 45);
 }
 function openClass(elId) { return openCards.has(elId) ? ' open' : ''; }
 
@@ -1556,8 +1955,10 @@ async function clientReply(id, btn) {
   const input = $('reply-' + id);
   const texto = input.value.trim();
   const clave = 'c' + id;
-  if ((!texto && !hayImagenes(clave)) || input.disabled) return;
+  if (input.disabled) return;
+  if (!texto && !hayImagenes(clave)) { sacudir(input); input.focus(); return; }
   input.disabled = true;
+  await volarAvion(btn);
   const listo = ocupado(btn);
   tarjetaOcupada('card-' + id, true);
 
@@ -1590,7 +1991,10 @@ async function clientReply(id, btn) {
 
 // ── CLIENT: New query ──
 function openClientNewQuery() {
-  $('modal-new-query').classList.add('active');
+  const ov = $('modal-new-query');
+  ov.classList.add('active');
+  anim(ov, { opacity: [0, 1] }, { duracion: 220, mantener: false });
+  anim(ov.querySelector('.modal-content'), { transform: ['translateY(100%)', 'translateY(0)'] }, { resorte: [230, 21], mantener: false });
   $('nq-tracking').value = '';
   $('nq-venta').value = '';
   $('nq-tipo').value = '';
@@ -1599,7 +2003,17 @@ function openClientNewQuery() {
   pintarPrevias('nq');
 }
 function closeClientNewQuery() {
-  $('modal-new-query').classList.remove('active');
+  const ov = $('modal-new-query'), cont = ov.querySelector('.modal-content');
+  if (!ov.classList.contains('active') || ov._cerrando) return;
+  ov._cerrando = true;
+  Promise.all([
+    anim(cont, { transform: ['translateY(0)', 'translateY(100%)'] }, { duracion: 240, easing: 'cubic-bezier(.4,0,1,1)', mantener: false, fill: 'forwards' }),
+    anim(ov, { opacity: [1, 0] }, { duracion: 240, mantener: false, fill: 'forwards' })
+  ]).then(() => {
+    ov.classList.remove('active');
+    ov._cerrando = false;
+    [ov, cont].forEach(e => e.getAnimations().forEach(a => a.cancel()));
+  });
 }
 
 async function sendClientNewQuery() {
@@ -1607,11 +2021,16 @@ async function sendClientNewQuery() {
   const venta = $('nq-venta').value.trim();
   const tipo = $('nq-tipo').value;
   const mensaje = $('nq-mensaje').value.trim();
-  if (!tracking || !tipo || !mensaje) { toast('Completá tracking, tipo de problema y mensaje'); return; }
+  if (!tracking || !tipo || !mensaje) {
+    toast('Completá tracking, tipo de problema y mensaje');
+    sacudirVacios(['nq-tracking', 'nq-tipo', 'nq-mensaje']);
+    return;
+  }
   const asunto = buildAsunto(tracking, venta, currentUser.cliente, tipo);
 
   if ($('nq-send').disabled) return;
   const listoNq = ocupado($('nq-send'), 'Enviando...');
+  toast.cargando(hayImagenes('nq') ? 'Subiendo fotos…' : 'Enviando consulta…');
 
   let imagenesNq = [];
   if (hayImagenes('nq')) {
@@ -1636,7 +2055,7 @@ async function sendClientNewQuery() {
     delete imgsPendientes['nq'];
     pintarPrevias('nq');
     closeClientNewQuery();
-    toast('Consulta #' + res.id + ' creada');
+    toast('✓ Consulta #' + res.id + ' creada', { desc: 'Planet ya la puede ver. Te avisamos acá cuando respondan.' });
     loadClientData();
   } else {
     toast('Error: ' + (res.error || 'No se pudo crear'));
@@ -1644,10 +2063,19 @@ async function sendClientNewQuery() {
 }
 
 function clientSubtab(btn, id) {
-  btn.closest('.subtab-bar').querySelectorAll('.subtab').forEach(b => b.classList.remove('active'));
+  const barra = btn.closest('.subtab-bar');
+  const tabs = Array.from(barra.querySelectorAll('.subtab'));
+  const antes = tabs.findIndex(b => b.classList.contains('active'));
+  const ahora = tabs.indexOf(btn);
+  tabs.forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
+  moverIndicador(barra, btn, true);
   document.querySelectorAll('#screen-client .client-sub').forEach(s => s.classList.remove('active'));
   $(id).classList.add('active');
+  if (antes !== ahora) {
+    const dir = ahora > antes ? 1 : -1;
+    anim($(id), { opacity: [0, 1], transform: [`translateX(${24 * dir}px)`, 'none'] }, { resorte: [280, 26], mantener: false });
+  }
 }
 
 // ═══ PLANET VIEW ═══
@@ -1663,6 +2091,7 @@ function initPlanetView(prefetched) {
     $('admin-btn').style.display = '';
   }
   show('screen-planet');
+  acomodarIndicadores();
   if (!prefetched) {
     const cached = leerCache();
     if (cached) renderPlanetData(cached);
@@ -1674,8 +2103,8 @@ async function loadPlanetData(prefetched) {
   let lista = prefetched;
   if (!lista) {
     if (!datosMostrados) {
-      $('planet-consultas-list').innerHTML = '<div class="spinner"></div>';
-      $('planet-enviadas-list').innerHTML = '<div class="spinner"></div>';
+      $('planet-consultas-list').innerHTML = esqueletoHtml(4);
+      $('planet-enviadas-list').innerHTML = esqueletoHtml(3);
     }
     setActualizando('planet-reload', true);
     const res = await api({ action: 'consultas' });
@@ -1693,6 +2122,7 @@ async function loadPlanetData(prefetched) {
 }
 
 function renderPlanetData(lista) {
+  const primeraVez = !datosMostrados;
   datosMostrados = true;
   allConsultas = normEstados(lista);
 
@@ -1717,10 +2147,11 @@ function renderPlanetData(lista) {
 
   $('planet-stats').innerHTML = ['pendiente','proceso','espera','cerrado'].map(g => `
     <div class="stat-card"><div class="stat-number" style="color:${GRUPOS[g].color}">${cuenta(recibidas, g)}</div><div class="stat-label">${g === 'pendiente' ? 'Pendientes' : g === 'cerrado' ? 'Cerradas' : GRUPOS[g].label}</div></div>`).join('');
+  rodarNumeros('planet-stats');
 
   // Sidebar badges: lo que requiere atención de Planet
-  $('sb-consultas').textContent = pendientes + enProceso;
-  $('sb-enviadas').textContent = cuenta(enviadas, 'pendiente');
+  ponerContador($('sb-consultas'), pendientes + enProceso);
+  ponerContador($('sb-enviadas'), cuenta(enviadas, 'pendiente'));
 
   // Alert
   if (pendientes > 0) {
@@ -1755,6 +2186,12 @@ function renderPlanetData(lista) {
 
   renderPlanetConsultas(recibidas);
   renderPlanetEnviadas(enviadas);
+
+  if (primeraVez) {
+    entrada($('planet-consultas-list').children);
+    entrada($('planet-enviadas-list').children);
+  }
+  marcarNovedades(allConsultas, 'tcard-');
 }
 
 function setPlanetFilter(f, btn) {
@@ -1763,6 +2200,7 @@ function setPlanetFilter(f, btn) {
   btn.classList.add('active');
   const recibidas = allConsultas.filter(c => c.direccion === 'cliente_a_planet');
   renderPlanetConsultas(recibidas);
+  entrada($('planet-consultas-list').children, 'translateY(8px)', 30);
 }
 
 function setPlanetEstadoFilter(f, btn) {
@@ -1771,6 +2209,7 @@ function setPlanetEstadoFilter(f, btn) {
   btn.classList.add('active');
   const recibidas = allConsultas.filter(c => c.direccion === 'cliente_a_planet');
   renderPlanetConsultas(recibidas);
+  entrada($('planet-consultas-list').children, 'translateY(8px)', 30);
 }
 
 function renderPlanetConsultas(consultas) {
@@ -1911,7 +2350,7 @@ async function planetReply(id, pedirInfo, btn) {
   const texto = input.value.trim();
   const clave = 'p' + id;
   if (input.disabled) return;
-  if (!texto && !hayImagenes(clave)) { toast(pedirInfo ? 'Escribí qué info necesitás del cliente' : 'Escribí un mensaje'); return; }
+  if (!texto && !hayImagenes(clave)) { toast(pedirInfo ? 'Escribí qué info necesitás del cliente' : 'Escribí un mensaje'); sacudir(input); input.focus(); return; }
   const cardId = 'tcard-' + id;
   input.disabled = true;
   const listo = ocupado(btn, 'Enviando...');
@@ -1975,11 +2414,16 @@ async function sendPlanetNewQuery() {
   const venta = $('pnq-venta').value.trim();
   const tipo = $('pnq-tipo').value;
   const mensaje = $('pnq-mensaje').value.trim();
-  if (!tracking || !tipo || !mensaje || !cliente) { toast('Completá tracking, tipo de problema y mensaje'); return; }
+  if (!tracking || !tipo || !mensaje || !cliente) {
+    toast('Completá tracking, tipo de problema y mensaje');
+    sacudirVacios(['pnq-cliente', 'pnq-tracking', 'pnq-tipo', 'pnq-mensaje']);
+    return;
+  }
   const asunto = buildAsunto(tracking, venta, cliente, tipo);
 
   if ($('pnq-send').disabled) return;
   const listoPnq = ocupado($('pnq-send'), 'Enviando...');
+  toast.cargando(hayImagenes('pnq') ? 'Subiendo fotos…' : 'Enviando consulta…');
 
   let imagenesPnq = [];
   if (hayImagenes('pnq')) {
@@ -2007,7 +2451,7 @@ async function sendPlanetNewQuery() {
     $('pnq-mensaje').value = '';
     delete imgsPendientes['pnq'];
     pintarPrevias('pnq');
-    toast('Consulta #' + res.id + ' enviada a ' + cliente);
+    toast('✓ Consulta #' + res.id + ' enviada', { desc: cliente + ' la va a ver en su portal.' });
     planetNav(document.querySelector('.sidebar-item'), 'planet-enviadas');
     loadPlanetData();
   } else {
@@ -2016,10 +2460,13 @@ async function sendPlanetNewQuery() {
 }
 
 function planetNav(btn, id) {
+  const yaEstaba = $(id).classList.contains('active');
   document.querySelectorAll('.sidebar-item').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
+  moverIndicador(btn.closest('.sidebar'), btn, true);
   document.querySelectorAll('#screen-planet .planet-sub').forEach(s => s.classList.remove('active'));
   $(id).classList.add('active');
+  if (!yaEstaba) anim($(id), { opacity: [0, 1], transform: ['translateY(8px)', 'none'] }, { duracion: 320, mantener: false });
   if (id === 'planet-usuarios') { loadUsers(); preloadClients(); }
   if (id === 'planet-clientes') loadClients();
 }
@@ -2037,7 +2484,7 @@ function toggleClienteField() {
 let editingUser = null;
 
 async function loadUsers() {
-  $('users-list').innerHTML = '<div class="spinner"></div>';
+  $('users-list').innerHTML = esqueletoHtml(3);
   const res = await api({ action: 'usuarios' });
   let users = [];
   if (res.ok) {
@@ -2172,7 +2619,7 @@ function toggleNewClientForm() {
 }
 
 async function loadClients() {
-  $('clients-list').innerHTML = '<div class="spinner"></div>';
+  $('clients-list').innerHTML = esqueletoHtml(3);
   const res = await api({ action: 'clientes' });
   if (!res.ok) {
     $('clients-list').innerHTML = '<div class="empty-state"><p>Error cargando clientes</p></div>';
