@@ -427,6 +427,7 @@ body {
   margin-left: 5px; vertical-align: middle;
 }
 .subtab .subtab-badge[hidden] { display: none; }
+.client-chip .cnt { margin-left: 2px; font-weight: 700; font-variant-numeric: tabular-nums; opacity: 0.75; }
 .subtab.active .subtab-badge { background: rgba(255,255,255,0.25); color: #fff; }
 .subtab:not(.active) .subtab-badge { background: var(--danger); color: #fff; }
 .client-sub { display: none; }
@@ -1503,6 +1504,7 @@ function doLogout(sessionAlreadyInvalid) {
   currentUser = null;
   datosMostrados = false;
   _vistos = null;
+  Object.keys(clientTabEstado).forEach(k => delete clientTabEstado[k]);
   Object.keys(_numsPrevios).forEach(k => delete _numsPrevios[k]);
   try { localStorage.removeItem('planet_user'); } catch(e) {}
   $('login-user').value = '';
@@ -1759,8 +1761,8 @@ function renderClientData(lista) {
   renderClientList(dePlanet, 'client-planet-list', true, 'No hay consultas de Planet');
 
   if (primeraVez) {
-    entrada($('client-mis-list').children);
-    entrada($('client-planet-list').children);
+    entrada(tarjetasDe('client-mis-list'));
+    entrada(tarjetasDe('client-planet-list'));
   }
   marcarNovedades(consultas, 'card-');
 }
@@ -1886,25 +1888,81 @@ function badgeEstado(grupo, paraCliente) {
 }
 function estadoLabel(estado) { return GRUPOS[grupoPlanet(estado)].label; }
 
+// Solapas de estado del cliente (como las de Planet). Al entrar se abre la primera que tenga
+// consultas: Esperan tu respuesta → Pendiente → En proceso. Las cerradas quedan en su solapa.
+const clientTabEstado = {};   // lista → 'espera' | 'pendiente' | 'proceso' | 'cerrado' | 'Todos'
+const _listasCliente = {};
+const SOLAPAS_CLIENTE = [
+  { g: 'pendiente', icono: '⏳', label: 'Pendiente' },
+  { g: 'proceso',   icono: '🔄', label: 'En proceso' },
+  { g: 'espera',    icono: '💬', label: 'Esperan tu respuesta' },
+  { g: 'cerrado',   icono: '✓',  label: 'Cerradas' }
+];
+function solapaInicial(consultas) {
+  const hay = g => consultas.some(c => grupoCliente(c.estado) === g);
+  return ['espera', 'pendiente', 'proceso'].find(hay) || 'cerrado';
+}
 function renderClientList(consultas, containerId, isPlanetQuery, vacio) {
+  _listasCliente[containerId] = { consultas, isPlanetQuery };
   if (consultas.length === 0) {
     $(containerId).innerHTML = `<div class="empty-state"><p>${vacio}</p></div>`;
     return;
   }
-  const esperan = consultas.filter(c => grupoCliente(c.estado) === 'espera');
-  const activas = consultas.filter(c => ['pendiente','proceso'].includes(grupoCliente(c.estado)));
-  const cerradas = consultas.filter(c => grupoCliente(c.estado) === 'cerrado');
+  const vista = clientTabEstado[containerId] || (clientTabEstado[containerId] = solapaInicial(consultas));
+  const n = g => consultas.filter(c => grupoCliente(c.estado) === g).length;
+  const chips = SOLAPAS_CLIENTE.map(t => {
+    const act = vista === t.g, col = GRUPOS[t.g].color;
+    return `<button class="client-chip ${act ? 'active' : ''}" data-v="${t.g}" onclick="clientEstadoTab('${containerId}','${t.g}',this)" style="${act ? '' : 'border-color:' + col + ';color:' + col + ';'}">${t.icono} ${t.label} <span class="cnt">${n(t.g)}</span></button>`;
+  }).join('') +
+    `<button class="client-chip ${vista === 'Todos' ? 'active' : ''}" data-v="Todos" onclick="clientEstadoTab('${containerId}','Todos',this)">Todas <span class="cnt">${consultas.length}</span></button>`;
+  $(containerId).innerHTML = `<div class="client-filter estado-chips">${chips}</div><div class="estado-lista"></div>`;
+  pintarListaCliente(containerId);
+}
 
+function pintarListaCliente(containerId) {
+  const { consultas, isPlanetQuery } = _listasCliente[containerId];
+  const vista = clientTabEstado[containerId];
+  const cont = $(containerId).querySelector('.estado-lista');
+  if (vista !== 'Todos') {
+    const lista = consultas.filter(c => grupoCliente(c.estado) === vista);
+    const t = SOLAPAS_CLIENTE.find(x => x.g === vista);
+    cont.innerHTML = lista.length
+      ? lista.map(c => renderClientConsultaCard(c, false, isPlanetQuery)).join('')
+      : `<div class="empty-state"><p>No hay consultas en “${t ? t.label : vista}”</p></div>`;
+    return;
+  }
+  // Todas: agrupadas, con las cerradas al final
   let html = '';
   const seccion = (titulo, list, color, dimmed) => {
     if (list.length === 0) return;
     html += `<div class="section-label" style="${html ? 'margin-top:20px;' : ''}${color ? 'color:' + color : ''}">${titulo}</div>`;
     list.forEach(c => { html += renderClientConsultaCard(c, dimmed, isPlanetQuery); });
   };
-  seccion('Esperan tu respuesta', esperan, 'var(--wait)', false);
-  seccion('Consultas activas', activas, '', false);
-  seccion('Cerradas', cerradas, '', true);
-  $(containerId).innerHTML = html;
+  const de = g => consultas.filter(c => grupoCliente(c.estado) === g);
+  seccion('Esperan tu respuesta', de('espera'), 'var(--wait)', false);
+  seccion('Pendientes', de('pendiente'), '', false);
+  seccion('En proceso', de('proceso'), '', false);
+  seccion('Cerradas', de('cerrado'), '', true);
+  cont.innerHTML = html;
+}
+
+function clientEstadoTab(containerId, vista, btn) {
+  if (clientTabEstado[containerId] === vista) return;
+  const orden = ['pendiente', 'proceso', 'espera', 'cerrado', 'Todos'];
+  const dir = orden.indexOf(vista) > orden.indexOf(clientTabEstado[containerId]) ? 1 : -1;
+  clientTabEstado[containerId] = vista;
+  btn.closest('.client-filter').querySelectorAll('.client-chip').forEach(b => {
+    const act = b === btn, g = b.dataset.v;
+    b.classList.toggle('active', act);
+    b.style.cssText = (act || g === 'Todos') ? '' : 'border-color:' + GRUPOS[g].color + ';color:' + GRUPOS[g].color + ';';
+  });
+  pintarListaCliente(containerId);
+  entrada($(containerId).querySelector('.estado-lista').children, `translateX(${20 * dir}px)`, 35);
+}
+// Lo que se anima al cargar: las tarjetas, no la barra de solapas
+function tarjetasDe(containerId) {
+  const l = $(containerId).querySelector('.estado-lista');
+  return (l || $(containerId)).children;
 }
 
 function renderClientConsultaCard(c, dimmed, isPlanetQuery) {
@@ -2072,6 +2130,7 @@ function clientSubtab(btn, id) {
   moverIndicador(barra, btn, true);
   document.querySelectorAll('#screen-client .client-sub').forEach(s => s.classList.remove('active'));
   $(id).classList.add('active');
+  acomodarIndicadores();
   if (antes !== ahora) {
     const dir = ahora > antes ? 1 : -1;
     anim($(id), { opacity: [0, 1], transform: [`translateX(${24 * dir}px)`, 'none'] }, { resorte: [280, 26], mantener: false });
