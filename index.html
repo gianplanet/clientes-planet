@@ -148,6 +148,7 @@ body {
 }
 .field input:focus, .field select:focus, .field textarea:focus { border-color: var(--primary); }
 .field textarea { resize: vertical; min-height: 80px; line-height: 1.5; }
+.field-hint { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
 .btn-primary {
   width: 100%; padding: 12px; background: var(--primary); color: #fff; border: none;
   border-radius: var(--radius-sm); font-family: var(--font); font-size: 15px;
@@ -932,15 +933,10 @@ body {
       Nueva consulta
       <button class="modal-close" onclick="closeClientNewQuery()">✕</button>
     </div>
-    <div class="form-row">
-      <div class="field">
-        <label>Tracking *</label>
-        <input type="text" id="nq-tracking" placeholder="Ej: 152089">
-      </div>
-      <div class="field">
-        <label>N° de venta</label>
-        <input type="text" id="nq-venta" placeholder="Ej: 4521">
-      </div>
+    <div class="field" style="margin-bottom:12px;">
+      <label>Tracking, dirección o referencia *</label>
+      <input type="text" id="nq-ref" placeholder="Ej: 152089 / Av. Siempreviva 742 / Venta 4521">
+      <div class="field-hint">Lo que pongas acá se copia con un clic desde la consulta.</div>
     </div>
     <div class="field" style="margin-bottom:12px;">
       <label>Tipo de problema *</label>
@@ -1108,15 +1104,10 @@ body {
                 <select id="pnq-tipo" class="tipo-select"></select>
               </div>
             </div>
-            <div class="form-row">
-              <div class="field">
-                <label>Tracking *</label>
-                <input type="text" id="pnq-tracking" placeholder="Ej: 152089">
-              </div>
-              <div class="field">
-                <label>N° de venta</label>
-                <input type="text" id="pnq-venta" placeholder="Ej: 4521">
-              </div>
+            <div class="field" style="margin-bottom:12px;">
+              <label>Tracking, dirección o referencia *</label>
+              <input type="text" id="pnq-ref" placeholder="Ej: 152089 / Av. Siempreviva 742 / Venta 4521">
+              <div class="field-hint">Lo que pongas acá se copia con un clic desde la consulta.</div>
             </div>
             <div class="field" style="margin-bottom:12px;">
               <label>Mensaje</label>
@@ -1915,7 +1906,7 @@ function alertEsperan(texto) {
     </div>`;
 }
 
-// ── ASUNTO: tracking · venta · cliente · tipo de problema ──
+// ── ASUNTO: referencia (tracking, dirección, etc.) · cliente · tipo de problema ──
 const TIPOS_PROBLEMA = [
   'No entregado',
   'Demora en la entrega',
@@ -1930,13 +1921,29 @@ function fillTipoSelects() {
     TIPOS_PROBLEMA.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('');
   document.querySelectorAll('.tipo-select').forEach(sel => { sel.innerHTML = html; });
 }
-function buildAsunto(tracking, venta, cliente, tipo) {
-  const parts = ['Tracking ' + tracking];
-  if (venta) parts.push('Venta ' + venta);
+// El asunto se arma como: referencia · cliente · tipo de problema
+function buildAsunto(referencia, cliente, tipo) {
+  // El asunto separa sus partes con " · ", así que si el cliente usó ese símbolo lo cambiamos
+  // por un guion. Si no, al copiar se cortaría justo ahí.
+  const parts = [String(referencia).replace(/\s*·\s*/g, ' - ')];
   if (cliente) parts.push(cliente);
   parts.push(tipo);
   return parts.join(' · ');
 }
+
+// Lo que el cliente escribió (tracking, dirección, etc.): es la primera parte del asunto.
+// En las consultas viejas venía como "Tracking 152089", así que le sacamos esa palabra.
+// Palabras sueltas que la gente escribe adelante del dato y que Lightdata no entiende
+// ("Tracking 152089", "Venta N° 4521"). Se sacan solo del principio.
+const ETIQUETAS_REF = /^(?:(?:tracking|seguimiento|env[ií]o|gu[ií]a|venta|pedido|orden|nro\.?|n[°º]|n[úu]m(?:ero)?\.?|#)\s*[:\-–]?\s*)+/i;
+
+// Lo que se copia de una consulta: lo que escribió el cliente, sin esas etiquetas del principio
+function refDeAsunto(asunto) {
+  const primera = (String(asunto || '').split(' · ')[0] || '').trim();
+  const limpio = primera.replace(ETIQUETAS_REF, '').trim();
+  return limpio || primera;   // si solo escribió la etiqueta, copiamos lo que haya
+}
+
 
 // Consultas abiertas (desplegadas) — se mantienen al recargar
 const openCards = new Set();
@@ -2166,7 +2173,7 @@ function renderClientConsultaCard(c, dimmed, isPlanetQuery) {
         <div class="card-top">
           ${badgeEstado(grupo, true)}
           <span class="card-date">${esc(fmtFecha(c.fecha))}</span>
-          ${botonCopiar(c.asunto, 'Copiar el asunto')}
+          ${botonCopiar(refDeAsunto(c.asunto), 'Copiar el tracking / referencia')}
           ${CHEVRON}
         </div>
         <div class="card-asunto">${esc(c.asunto)}</div>
@@ -2221,8 +2228,7 @@ function openClientNewQuery() {
   ov.classList.add('active');
   anim(ov, { opacity: [0, 1] }, { duracion: 220, mantener: false });
   anim(ov.querySelector('.modal-content'), { transform: ['translateY(100%)', 'translateY(0)'] }, { resorte: [230, 21], mantener: false });
-  $('nq-tracking').value = '';
-  $('nq-venta').value = '';
+  $('nq-ref').value = '';
   $('nq-tipo').value = '';
   $('nq-mensaje').value = '';
   delete imgsPendientes['nq'];
@@ -2243,16 +2249,15 @@ function closeClientNewQuery() {
 }
 
 async function sendClientNewQuery() {
-  const tracking = $('nq-tracking').value.trim();
-  const venta = $('nq-venta').value.trim();
+  const referencia = $('nq-ref').value.trim();
   const tipo = $('nq-tipo').value;
   const mensaje = $('nq-mensaje').value.trim();
-  if (!tracking || !tipo || !mensaje) {
-    toast('Completá tracking, tipo de problema y mensaje');
-    sacudirVacios(['nq-tracking', 'nq-tipo', 'nq-mensaje']);
+  if (!referencia || !tipo || !mensaje) {
+    toast('Completá el tracking o referencia, el tipo de problema y el mensaje');
+    sacudirVacios(['nq-ref', 'nq-tipo', 'nq-mensaje']);
     return;
   }
-  const asunto = buildAsunto(tracking, venta, currentUser.cliente, tipo);
+  const asunto = buildAsunto(referencia, currentUser.cliente, tipo);
 
   if ($('nq-send').disabled) return;
   const listoNq = ocupado($('nq-send'), 'Enviando...');
@@ -2560,7 +2565,7 @@ function renderTicketCard(c, isPlanetQuery) {
             <span class="card-date">${esc(fmtFecha(c.fecha))}</span>
             ${c.estado === 'Respuesta cliente' ? '<span class="tag-respondio">💬 Respondió el cliente</span>' : ''}
             <span class="ticket-client-tag tag-${esc(c.cliente)}">${esc(c.cliente)}</span>
-            ${botonCopiar(c.asunto, 'Copiar el asunto')}
+            ${botonCopiar(refDeAsunto(c.asunto), 'Copiar el tracking / referencia')}
             ${CHEVRON}
           </div>
           <div class="card-asunto">${esc(c.asunto)}</div>
@@ -2643,16 +2648,15 @@ async function changeStatus(id, estado, btn) {
 
 async function sendPlanetNewQuery() {
   const cliente = $('pnq-cliente').value;
-  const tracking = $('pnq-tracking').value.trim();
-  const venta = $('pnq-venta').value.trim();
+  const referencia = $('pnq-ref').value.trim();
   const tipo = $('pnq-tipo').value;
   const mensaje = $('pnq-mensaje').value.trim();
-  if (!tracking || !tipo || !mensaje || !cliente) {
-    toast('Completá tracking, tipo de problema y mensaje');
-    sacudirVacios(['pnq-cliente', 'pnq-tracking', 'pnq-tipo', 'pnq-mensaje']);
+  if (!referencia || !tipo || !mensaje || !cliente) {
+    toast('Completá el tracking o referencia, el tipo de problema y el mensaje');
+    sacudirVacios(['pnq-cliente', 'pnq-ref', 'pnq-tipo', 'pnq-mensaje']);
     return;
   }
-  const asunto = buildAsunto(tracking, venta, cliente, tipo);
+  const asunto = buildAsunto(referencia, cliente, tipo);
 
   if ($('pnq-send').disabled) return;
   const listoPnq = ocupado($('pnq-send'), 'Enviando...');
@@ -2678,8 +2682,7 @@ async function sendPlanetNewQuery() {
   listoPnq();
 
   if (res.ok) {
-    $('pnq-tracking').value = '';
-    $('pnq-venta').value = '';
+    $('pnq-ref').value = '';
     $('pnq-tipo').value = '';
     $('pnq-mensaje').value = '';
     delete imgsPendientes['pnq'];
