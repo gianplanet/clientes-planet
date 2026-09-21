@@ -226,7 +226,16 @@ body {
 }
 
 /* ── CARD SUMMARY (collapsed row, shared) ── */
-.card-summary { cursor: pointer; user-select: none; }
+.card-summary { cursor: pointer; }
+.card-top { user-select: none; }
+.card-asunto, .ticket-tracking, .thread-text, .timeline-item { user-select: text; }
+.copy-btn {
+  flex-shrink: 0; width: 26px; height: 26px; border-radius: 6px; padding: 0;
+  border: 1px solid var(--card-border); background: var(--card); color: var(--text-muted);
+  display: grid; place-items: center; cursor: pointer; transition: all 0.15s;
+}
+.copy-btn:hover { border-color: var(--primary); color: var(--primary); }
+.copy-btn svg { width: 14px; height: 14px; }
 .card-top { display: flex; align-items: center; gap: 8px; }
 .card-date { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .card-chevron {
@@ -465,8 +474,22 @@ body {
 .fab:hover { transform: scale(1.08); }
 .fab svg { width: 24px; height: 24px; }
 
-/* ── MOBILE FRAME ── */
+/* ── MARCO DEL CLIENTE: celular por defecto, más ancho en computadora ── */
 .mobile-frame { max-width: 420px; margin: 0 auto; padding: 0 16px 80px; position: relative; }
+
+/* Computadora o tablet: aprovecha el ancho y saca la barra de abajo (que es de celular) */
+@media (min-width: 760px) {
+  .mobile-frame { max-width: 880px; padding: 0 24px 32px; }
+  .tab-bar { display: none; }
+  .fab { bottom: 28px; right: 28px; width: 56px; height: 56px; }
+  .consulta-header { padding: 14px 18px; }
+  .consulta-detail { padding: 0 18px 16px; }
+  .reply-box { padding: 12px 18px 16px; }
+  .card-asunto { font-size: 15px; }
+  .stats-row { gap: 14px; }
+  .modal-overlay { align-items: center; }
+  .modal-content { border-radius: var(--radius); max-width: 520px; padding: 24px; }
+}
 
 /* ── DESKTOP FRAME (Planet) ── */
 .desktop-frame { max-width: 960px; margin: 0 auto; padding: 0 16px; }
@@ -1920,6 +1943,9 @@ const openCards = new Set();
 function toggleCard(elId) {
   const el = $(elId);
   if (!el) return;
+  // Si el usuario seleccionó texto (para copiarlo), no abrimos ni cerramos
+  const sel = window.getSelection && window.getSelection();
+  if (sel && String(sel).trim().length > 0) return;
   const abrir = !el.classList.contains('open');
   const h0 = el.offsetHeight;
   el.classList.toggle('open', abrir);
@@ -1939,6 +1965,39 @@ function toggleCard(elId) {
   if (abrir) entrada(el.querySelectorAll('.timeline-item, .thread-msg, .status-actions, .thread-reply-bar, .reply-box'), 'translateY(8px)', 45);
 }
 function openClass(elId) { return openCards.has(elId) ? ' open' : ''; }
+
+const COPY_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>';
+
+// Botón para copiar un texto (el asunto, el tracking, etc.)
+function botonCopiar(texto, titulo) {
+  return `<button type="button" class="copy-btn" data-copiar="${esc(texto)}" title="${esc(titulo || 'Copiar')}">${COPY_ICON}</button>`;
+}
+
+async function copiarTexto(texto) {
+  try {
+    await navigator.clipboard.writeText(texto);
+  } catch (e) {
+    // Navegadores viejos o sin permiso: copiamos con un campo auxiliar
+    const ta = document.createElement('textarea');
+    ta.value = texto;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch (e2) { toast('No se pudo copiar'); }
+    document.body.removeChild(ta);
+  }
+  toast('✓ Copiado');
+}
+
+// El botón copiar no debe abrir ni cerrar la tarjeta
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('.copy-btn');
+  if (!b) return;
+  e.preventDefault();
+  e.stopPropagation();
+  copiarTexto(b.dataset.copiar || '');
+}, true);
 
 const CHEVRON = '<svg class="card-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
 
@@ -2107,6 +2166,7 @@ function renderClientConsultaCard(c, dimmed, isPlanetQuery) {
         <div class="card-top">
           ${badgeEstado(grupo, true)}
           <span class="card-date">${esc(fmtFecha(c.fecha))}</span>
+          ${botonCopiar(c.asunto, 'Copiar el asunto')}
           ${CHEVRON}
         </div>
         <div class="card-asunto">${esc(c.asunto)}</div>
@@ -2500,6 +2560,7 @@ function renderTicketCard(c, isPlanetQuery) {
             <span class="card-date">${esc(fmtFecha(c.fecha))}</span>
             ${c.estado === 'Respuesta cliente' ? '<span class="tag-respondio">💬 Respondió el cliente</span>' : ''}
             <span class="ticket-client-tag tag-${esc(c.cliente)}">${esc(c.cliente)}</span>
+            ${botonCopiar(c.asunto, 'Copiar el asunto')}
             ${CHEVRON}
           </div>
           <div class="card-asunto">${esc(c.asunto)}</div>
