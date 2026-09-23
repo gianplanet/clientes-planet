@@ -259,6 +259,25 @@ body {
 .search-row.con-texto .search-clear { display: grid; place-items: center; }
 .search-info { font-size: 12px; color: var(--text-muted); margin: -4px 0 10px; }
 
+/* Botón "Ver más" al final de las listas largas */
+.ver-mas {
+  display: block; width: 100%; margin: 14px 0 4px; padding: 11px;
+  border: 1.5px dashed var(--card-border); border-radius: var(--radius);
+  background: var(--card); color: var(--text-secondary);
+  font-family: var(--font); font-size: 14px; font-weight: 600; cursor: pointer;
+  transition: all 0.15s;
+}
+.ver-mas:hover { border-color: var(--primary); color: var(--primary); }
+.ver-mas span { font-weight: 400; color: var(--text-muted); }
+
+/* Selector de cliente (cuando son muchos para botones) */
+.cliente-select {
+  width: 100%; max-width: 320px; margin-bottom: 16px; padding: 9px 12px;
+  border: 1.5px solid var(--input-border); border-radius: 20px;
+  background: var(--input-bg); color: var(--text);
+  font-family: var(--font); font-size: 14px; cursor: pointer;
+}
+
 .section-label {
   font-size: 12px; font-weight: 600; text-transform: uppercase;
   letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 10px;
@@ -1225,7 +1244,7 @@ let currentUser = null;     // {usuario, nombre, team, cliente, role}
 let allConsultas = [];       // loaded from API
 let allClientes = [];        // unique client names
 let planetFilter = 'Todos';  // current client filter
-let planetEstadoFilter = 'Todos'; // current estado filter
+let planetEstadoFilter = 'pendiente'; // al entrar, lo que hay que atender
 let busquedaPlanet = '';          // texto del buscador (Planet)
 let busquedaCliente = '';         // texto del buscador (cliente)
 let ordenNuevasPrimero = true;    // true: más recientes arriba
@@ -2195,6 +2214,25 @@ const GRUPOS = {
   espera:    { label: 'Esperando info', cls: 'status-Esperando-info', stripe: 'espera',  color: 'var(--wait)' },
   cerrado:   { label: 'Cerrado',        cls: 'status-Cerrado',        stripe: 'cerrado', color: 'var(--closed)' }
 };
+// ── DE A 20 POR VEZ ──
+// Con muchos clientes la lista se hace larguísima: mostramos de a 20 y
+// el resto se agrega con "Ver más".
+const PAGINA = 20;
+const visibles = {};        // cuántas tarjetas se muestran en cada lista
+const _repintar = {};       // cómo volver a dibujar cada lista
+function cuantasVisibles(id) { return visibles[id] || PAGINA; }
+function reiniciarPagina(id) { visibles[id] = PAGINA; }
+function reiniciarPaginas(ids) { ids.forEach(reiniciarPagina); }
+function verMas(id) {
+  visibles[id] = cuantasVisibles(id) + PAGINA;
+  if (_repintar[id]) _repintar[id]();
+}
+function botonVerMas(id, restantes) {
+  if (restantes <= 0) return '';
+  const proximas = Math.min(PAGINA, restantes);
+  return `<button class="ver-mas" onclick="verMas('${id}')">Ver ${proximas} más <span>(${restantes} sin mostrar)</span></button>`;
+}
+
 // ── BUSCAR Y ORDENAR ──
 // Saca tildes y mayúsculas para que "direccion" encuentre "Dirección"
 function normalizar(t) {
@@ -2237,6 +2275,7 @@ function ordenar(lista) {
 // ── Buscador de Planet ──
 function setBusqueda(texto) {
   busquedaPlanet = texto;
+  reiniciarPaginas(['planet-consultas-list', 'planet-enviadas-list']);
   ['planet-search', 'planet-search-env'].forEach(id => {
     const el = $(id);
     if (el) { if (el.value !== texto) el.value = texto; el.closest('.search-row').classList.toggle('con-texto', !!texto); }
@@ -2250,6 +2289,7 @@ function setBusqueda(texto) {
 // ── Buscador del cliente ──
 function setBusquedaCliente(texto) {
   busquedaCliente = texto;
+  reiniciarPaginas(Object.keys(_listasCliente));
   const el = $('client-search');
   if (el) { if (el.value !== texto) el.value = texto; el.closest('.search-row').classList.toggle('con-texto', !!texto); }
   Object.keys(_listasCliente).forEach(pintarListaCliente);
@@ -2331,11 +2371,15 @@ function pintarListaCliente(containerId) {
   const cont = $(containerId).querySelector('.estado-lista');
   if (!cont) return;
   // Buscando: mostramos todas las coincidencias, sin separar por estado
+  _repintar[containerId] = () => pintarListaCliente(containerId);
+  const tope = cuantasVisibles(containerId);
   if (busquedaCliente) {
     actualizarFab();
-    cont.innerHTML = consultas.length
-      ? `<div class="search-info">${consultas.length} resultado${consultas.length === 1 ? '' : 's'}</div>` +
-        ordenar(consultas).map(c => renderClientConsultaCard(c, grupoCliente(c.estado) === 'cerrado', isPlanetQuery)).join('')
+    const halladas = ordenar(consultas);
+    cont.innerHTML = halladas.length
+      ? `<div class="search-info">${halladas.length} resultado${halladas.length === 1 ? '' : 's'}</div>` +
+        halladas.slice(0, tope).map(c => renderClientConsultaCard(c, grupoCliente(c.estado) === 'cerrado', isPlanetQuery)).join('') +
+        botonVerMas(containerId, halladas.length - Math.min(tope, halladas.length))
       : `<div class="empty-state"><p>No encontramos consultas con “${esc(busquedaCliente)}”</p></div>`;
     return;
   }
@@ -2343,28 +2387,34 @@ function pintarListaCliente(containerId) {
     const lista = ordenar(consultas.filter(c => grupoCliente(c.estado) === vista));
     const t = SOLAPAS_CLIENTE.find(x => x.g === vista);
     cont.innerHTML = lista.length
-      ? lista.map(c => renderClientConsultaCard(c, false, isPlanetQuery)).join('')
+      ? lista.slice(0, tope).map(c => renderClientConsultaCard(c, false, isPlanetQuery)).join('') +
+        botonVerMas(containerId, lista.length - Math.min(tope, lista.length))
       : `<div class="empty-state"><p>No hay consultas en “${t ? t.label : vista}”</p></div>`;
+    actualizarFab();
     return;
   }
   // Todas: agrupadas, con las cerradas al final
-  let html = '';
+  let html = '', mostradas = 0;
   const seccion = (titulo, list, color, dimmed) => {
-    if (list.length === 0) return;
-    html += `<div class="section-label" style="${html ? 'margin-top:20px;' : ''}${color ? 'color:' + color : ''}">${titulo}</div>`;
-    list.forEach(c => { html += renderClientConsultaCard(c, dimmed, isPlanetQuery); });
+    if (list.length === 0 || mostradas >= tope) return;
+    const parte = list.slice(0, tope - mostradas);
+    mostradas += parte.length;
+    const de = parte.length < list.length ? ` (${parte.length} de ${list.length})` : '';
+    html += `<div class="section-label" style="${html ? 'margin-top:20px;' : ''}${color ? 'color:' + color : ''}">${titulo}${de}</div>`;
+    parte.forEach(c => { html += renderClientConsultaCard(c, dimmed, isPlanetQuery); });
   };
   const de = g => ordenar(consultas.filter(c => grupoCliente(c.estado) === g));
   seccion('Esperan tu respuesta', de('espera'), 'var(--wait)', false);
   seccion('Pendientes', de('pendiente'), '', false);
   seccion('En proceso', de('proceso'), '', false);
   seccion('Cerradas', de('cerrado'), '', true);
-  cont.innerHTML = html;
+  cont.innerHTML = html + botonVerMas(containerId, consultas.length - mostradas);
   actualizarFab();
 }
 
 function clientEstadoTab(containerId, vista, btn) {
   if (clientTabEstado[containerId] === vista) return;
+  reiniciarPagina(containerId);
   const orden = ['pendiente', 'proceso', 'espera', 'cerrado', 'Todos'];
   const dir = orden.indexOf(vista) > orden.indexOf(clientTabEstado[containerId]) ? 1 : -1;
   clientTabEstado[containerId] = vista;
@@ -2663,10 +2713,20 @@ function renderPlanetData(lista) {
 
   // Client filter chips — only show clients that have consultas
   const clientesConConsultas = [...new Set(recibidas.map(c => c.cliente))].sort();
-  $('planet-filter').innerHTML = `
-    ${clientesConConsultas.map(c => `<button class="client-chip ${planetFilter===c?'active':''}" onclick="setPlanetFilter('${esc(c)}',this)">${esc(c)}</button>`).join('')}
-    <button class="client-chip ${planetFilter==='Todos'?'active':''}" onclick="setPlanetFilter('Todos',this)">Todos</button>
-  `;
+  // Hasta 6 clientes van como botones; con más, un desplegable (si no, la pantalla se llena de botones)
+  if (clientesConConsultas.length > 6) {
+    const cuenta = n => recibidas.filter(c => c.cliente === n).length;
+    $('planet-filter').innerHTML = `
+      <select class="cliente-select" onchange="elegirCliente(this.value)">
+        <option value="Todos"${planetFilter === 'Todos' ? ' selected' : ''}>Todos los clientes (${recibidas.length})</option>
+        ${clientesConConsultas.map(n => `<option value="${esc(n)}"${planetFilter === n ? ' selected' : ''}>${esc(n)} (${cuenta(n)})</option>`).join('')}
+      </select>`;
+  } else {
+    $('planet-filter').innerHTML = `
+      ${clientesConConsultas.map(c => `<button class="client-chip ${planetFilter===c?'active':''}" onclick="setPlanetFilter('${esc(c)}',this)">${esc(c)}</button>`).join('')}
+      <button class="client-chip ${planetFilter==='Todos'?'active':''}" onclick="setPlanetFilter('Todos',this)">Todos</button>
+    `;
+  }
 
   renderPlanetConsultas(recibidas);
   renderPlanetEnviadas(enviadas);
@@ -2678,8 +2738,17 @@ function renderPlanetData(lista) {
   marcarNovedades(allConsultas, 'tcard-');
 }
 
+// Elegir cliente desde el desplegable
+function elegirCliente(nombre) {
+  planetFilter = nombre;
+  reiniciarPagina('planet-consultas-list');
+  renderPlanetConsultas(allConsultas.filter(c => c.direccion === 'cliente_a_planet'));
+  entrada($('planet-consultas-list').children, 'translateY(8px)', 30);
+}
+
 function setPlanetFilter(f, btn) {
   planetFilter = f;
+  reiniciarPagina('planet-consultas-list');
   btn.closest('.client-filter').querySelectorAll('.client-chip').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   const recibidas = allConsultas.filter(c => c.direccion === 'cliente_a_planet');
@@ -2689,6 +2758,7 @@ function setPlanetFilter(f, btn) {
 
 function setPlanetEstadoFilter(f, btn) {
   planetEstadoFilter = f;
+  reiniciarPagina('planet-consultas-list');
   btn.closest('.client-filter').querySelectorAll('.client-chip').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   const recibidas = allConsultas.filter(c => c.direccion === 'cliente_a_planet');
@@ -2719,7 +2789,8 @@ function renderPlanetConsultas(consultas) {
     $('planet-consultas-list').innerHTML = '<div class="empty-state"><p>No hay consultas' + (conFiltro ? ' con ese filtro' : '') + '</p></div>';
     return;
   }
-  $('planet-consultas-list').innerHTML = renderPlanetGrupos(filtered, false);
+  _repintar['planet-consultas-list'] = () => renderPlanetConsultas(consultas);
+  $('planet-consultas-list').innerHTML = renderPlanetGrupos(filtered, false, 'planet-consultas-list');
 }
 
 function renderPlanetEnviadas(consultas) {
@@ -2728,26 +2799,31 @@ function renderPlanetEnviadas(consultas) {
     $('planet-enviadas-list').innerHTML = '<div class="empty-state"><p>No hay consultas enviadas</p></div>';
     return;
   }
-  $('planet-enviadas-list').innerHTML = renderPlanetGrupos(consultas, true);
+  _repintar['planet-enviadas-list'] = () => renderPlanetEnviadas(consultas);
+  $('planet-enviadas-list').innerHTML = renderPlanetGrupos(consultas, true, 'planet-enviadas-list');
 }
 
 // Lista agrupada: Pendientes → En proceso → Esperando info → Cerradas
-function renderPlanetGrupos(consultas, isPlanetQuery) {
+function renderPlanetGrupos(consultas, isPlanetQuery, contId) {
   const titulos = {
     pendiente: 'Pendientes — requieren atención',
     proceso: 'En proceso',
     espera: isPlanetQuery ? 'Esperando respuesta del cliente' : 'Esperando info del cliente',
     cerrado: 'Cerradas'
   };
-  let html = '';
+  const tope = cuantasVisibles(contId);
+  let mostradas = 0, html = '';
   ['pendiente','proceso','espera','cerrado'].forEach(g => {
     const list = ordenar(consultas.filter(c => grupoPlanet(c.estado) === g));
-    if (list.length === 0) return;
+    if (list.length === 0 || mostradas >= tope) return;
+    const visibles = list.slice(0, tope - mostradas);
+    mostradas += visibles.length;
     const color = g === 'pendiente' ? 'var(--danger)' : g === 'cerrado' ? '' : GRUPOS[g].color;
-    html += `<div class="section-label" style="${html ? 'margin-top:20px;' : ''}${color ? 'color:' + color : ''}">${titulos[g]}</div>`;
-    list.forEach(c => html += renderTicketCard(c, isPlanetQuery));
+    const de = visibles.length < list.length ? ` (${visibles.length} de ${list.length})` : '';
+    html += `<div class="section-label" style="${html ? 'margin-top:20px;' : ''}${color ? 'color:' + color : ''}">${titulos[g]}${de}</div>`;
+    visibles.forEach(c => html += renderTicketCard(c, isPlanetQuery));
   });
-  return html;
+  return html + botonVerMas(contId, consultas.length - mostradas);
 }
 
 function renderTicketCard(c, isPlanetQuery) {
