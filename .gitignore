@@ -7,3 +7,7 @@ backend/
 # Estado local de wrangler (la herramienta de Cloudflare)
 .wrangler/
 servidor/node_modules/
+
+# Manuales de Cloudflare para el asistente (se instalan con "skills add", no son parte del portal)
+.agents/
+skills-lock.json
