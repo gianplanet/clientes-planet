@@ -2304,9 +2304,11 @@ function clientEstadoTab(containerId, vista, btn) {
   const dir = orden.indexOf(vista) > orden.indexOf(clientTabEstado[containerId]) ? 1 : -1;
   clientTabEstado[containerId] = vista;
   btn.closest('.client-filter').querySelectorAll('.client-chip').forEach(b => {
-    const act = b === btn, g = b.dataset.v;
+    const g = b.dataset.v;
+    if (!g) return;              // el botón de orden no es una solapa
+    const act = b === btn;
     b.classList.toggle('active', act);
-    b.style.cssText = (act || g === 'Todos') ? '' : 'border-color:' + GRUPOS[g].color + ';color:' + GRUPOS[g].color + ';';
+    b.style.cssText = (act || g === 'Todos' || !GRUPOS[g]) ? '' : 'border-color:' + GRUPOS[g].color + ';color:' + GRUPOS[g].color + ';';
   });
   pintarListaCliente(containerId);
   entrada($(containerId).querySelector('.estado-lista').children, `translateX(${20 * dir}px)`, 35);
