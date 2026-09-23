@@ -221,6 +221,44 @@ body {
 .client-chip.active { background: var(--primary); border-color: var(--primary); color: #fff; }
 .client-chip:hover:not(.active) { border-color: var(--primary); color: var(--primary); }
 
+/* ── CONVERSACIÓN CON SU PROPIA BARRA ──
+   Las conversaciones largas no estiran la tarjeta: se recorren con la barrita lateral. */
+.msgs-scroll {
+  max-height: 340px; overflow-y: auto; overscroll-behavior: contain;
+  padding-right: 6px; scrollbar-width: thin;
+  scrollbar-color: var(--card-border) transparent;
+}
+.msgs-scroll::-webkit-scrollbar { width: 8px; }
+.msgs-scroll::-webkit-scrollbar-track { background: transparent; }
+.msgs-scroll::-webkit-scrollbar-thumb {
+  background: var(--card-border); border-radius: 8px; border: 2px solid transparent; background-clip: content-box;
+}
+.msgs-scroll::-webkit-scrollbar-thumb:hover { background: var(--text-muted); background-clip: content-box; }
+/* Avisa que hay más mensajes arriba o abajo */
+.msgs-scroll.hay-mas { border-bottom: 1px dashed var(--card-border); }
+@media (max-width: 760px) { .msgs-scroll { max-height: 55vh; } }
+
+/* ── BUSCADOR ── */
+.search-row { position: relative; margin-bottom: 12px; }
+.search-row .search-ico {
+  position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+  width: 16px; height: 16px; color: var(--text-muted); pointer-events: none;
+}
+.search-input {
+  width: 100%; padding: 10px 36px 10px 36px;
+  border: 1.5px solid var(--input-border); border-radius: 20px;
+  background: var(--input-bg); font-family: var(--font); font-size: 14px;
+  color: var(--text); outline: none; transition: border-color 0.15s;
+}
+.search-input:focus { border-color: var(--primary); }
+.search-clear {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  width: 24px; height: 24px; border-radius: 50%; border: none; padding: 0;
+  background: var(--surface); color: var(--text-muted); cursor: pointer; display: none;
+}
+.search-row.con-texto .search-clear { display: grid; place-items: center; }
+.search-info { font-size: 12px; color: var(--text-muted); margin: -4px 0 10px; }
+
 .section-label {
   font-size: 12px; font-weight: 600; text-transform: uppercase;
   letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 10px;
@@ -473,6 +511,9 @@ body {
   transition: transform 0.15s;
 }
 .fab:hover { transform: scale(1.08); }
+/* Con una consulta abierta, el "+" se esconde para no taparle el botón de enviar */
+.fab.oculto { opacity: 0; transform: scale(0.6) translateY(10px); pointer-events: none; }
+.fab { transition: transform 0.2s, opacity 0.2s; }
 .fab svg { width: 24px; height: 24px; }
 
 /* ── MARCO DEL CLIENTE: celular por defecto, más ancho en computadora ── */
@@ -897,6 +938,13 @@ body {
     <div class="client-sub active" id="client-mis">
       <div id="client-mis-alert"></div>
       <div class="stats-row" id="client-stats"></div>
+      <div class="search-row" id="client-search-row">
+        <svg class="search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        <input class="search-input" id="client-search" type="search" autocomplete="off"
+               placeholder="Buscar por tracking, dirección o texto…"
+               oninput="setBusquedaCliente(this.value)">
+        <button class="search-clear" onclick="setBusquedaCliente('')" title="Limpiar">✕</button>
+      </div>
       <div id="client-mis-list"></div>
     </div>
 
@@ -1015,6 +1063,14 @@ body {
         <div class="planet-sub active" id="planet-consultas">
           <div id="planet-alert"></div>
           <div class="stats-row" id="planet-stats"></div>
+          <div class="search-row" id="planet-search-row">
+            <svg class="search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+            <input class="search-input" id="planet-search" type="search" autocomplete="off"
+                   placeholder="Buscar por tracking, dirección, cliente o texto…"
+                   oninput="setBusqueda(this.value)">
+            <button class="search-clear" onclick="setBusqueda('')" title="Limpiar">✕</button>
+          </div>
+          <div class="search-info" id="planet-search-info" hidden></div>
           <div class="client-filter" id="planet-estado-filter"></div>
           <div class="client-filter" id="planet-filter"></div>
           <div id="planet-consultas-list"></div>
@@ -1022,6 +1078,13 @@ body {
 
         <!-- Planet sub: Enviadas -->
         <div class="planet-sub" id="planet-enviadas">
+          <div class="search-row" id="planet-search-row-env">
+            <svg class="search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+            <input class="search-input" id="planet-search-env" type="search" autocomplete="off"
+                   placeholder="Buscar por tracking, dirección, cliente o texto…"
+                   oninput="setBusqueda(this.value)">
+            <button class="search-clear" onclick="setBusqueda('')" title="Limpiar">✕</button>
+          </div>
           <div id="planet-enviadas-list"></div>
         </div>
 
@@ -1159,6 +1222,9 @@ let allConsultas = [];       // loaded from API
 let allClientes = [];        // unique client names
 let planetFilter = 'Todos';  // current client filter
 let planetEstadoFilter = 'Todos'; // current estado filter
+let busquedaPlanet = '';          // texto del buscador (Planet)
+let busquedaCliente = '';         // texto del buscador (cliente)
+let ordenNuevasPrimero = true;    // true: más recientes arriba
 
 // ── HELPERS ──
 function $(id) { return document.getElementById(id); }
@@ -1969,9 +2035,32 @@ function toggleCard(elId) {
       el.style.overflow = '';
       if (!abrir) el.classList.remove('open');
     });
-  if (abrir) entrada(el.querySelectorAll('.timeline-item, .thread-msg, .status-actions, .thread-reply-bar, .reply-box'), 'translateY(8px)', 45);
+  if (abrir) {
+    entrada(el.querySelectorAll('.timeline-item, .thread-msg, .status-actions, .thread-reply-bar, .reply-box'), 'translateY(8px)', 45);
+    alFinalDeLosMensajes(el);
+  }
+  actualizarFab();
 }
 function openClass(elId) { return openCards.has(elId) ? ' open' : ''; }
+
+// El "+" de nueva consulta se esconde mientras haya una consulta abierta,
+// así no queda encima del botón de enviar
+function actualizarFab() {
+  const fab = document.querySelector('#screen-client .fab');
+  if (!fab) return;
+  const hayAbierta = !!document.querySelector('#screen-client .consulta-card.open');
+  fab.classList.toggle('oculto', hayAbierta);
+}
+
+// Al abrir una consulta se muestra lo último que se dijo
+function alFinalDeLosMensajes(card) {
+  const cont = card && card.querySelector('.msgs-scroll');
+  if (!cont) return;
+  const alFinal = () => { cont.scrollTop = cont.scrollHeight; };
+  alFinal();                       // ya mismo
+  requestAnimationFrame(alFinal);  // después de dibujar
+  setTimeout(alFinal, 320);        // y al terminar la animación de apertura
+}
 
 const COPY_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>';
 
@@ -2041,6 +2130,81 @@ const GRUPOS = {
   espera:    { label: 'Esperando info', cls: 'status-Esperando-info', stripe: 'espera',  color: 'var(--wait)' },
   cerrado:   { label: 'Cerrado',        cls: 'status-Cerrado',        stripe: 'cerrado', color: 'var(--closed)' }
 };
+// ── BUSCAR Y ORDENAR ──
+// Saca tildes y mayúsculas para que "direccion" encuentre "Dirección"
+function normalizar(t) {
+  return String(t == null ? '' : t).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+// ¿La consulta coincide con lo buscado? Busca en el asunto, el cliente, el número y los mensajes.
+function coincide(c, q) {
+  if (!q) return true;
+  const partes = normalizar(q).split(/\s+/).filter(Boolean);
+  const texto = normalizar([
+    c.asunto, c.cliente, '#' + c.id, c.id, c.nombre_creador, c.atendido_por, c.estado,
+    (c.mensajes || []).map(m => (m.nombre || '') + ' ' + (m.texto || '')).join(' ')
+  ].join(' '));
+  return partes.every(p => texto.indexOf(p) >= 0);
+}
+
+// Fecha de la última actividad: el último mensaje, o la fecha de creación
+function fechaMs(f) {
+  const s = String(f || '');
+  const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:[ ,]+(\d{1,2}):(\d{2}))?/);
+  if (m) return new Date(+m[3], +m[2] - 1, +m[1], +(m[4] || 0), +(m[5] || 0)).getTime();
+  const d = new Date(s);
+  return isNaN(d) ? 0 : d.getTime();
+}
+function ultimaActividad(c) {
+  const msgs = c.mensajes || [];
+  const fechas = [fechaMs(c.fecha)].concat(msgs.map(m => fechaMs(m.fecha)));
+  return Math.max.apply(null, fechas.concat([0]));
+}
+// Ordena por última actividad; a igualdad, por número de consulta
+function ordenar(lista) {
+  const signo = ordenNuevasPrimero ? -1 : 1;
+  return lista.slice().sort((a, b) => {
+    const d = ultimaActividad(a) - ultimaActividad(b);
+    return signo * (d !== 0 ? d : (Number(a.id) - Number(b.id)));
+  });
+}
+
+// ── Buscador de Planet ──
+function setBusqueda(texto) {
+  busquedaPlanet = texto;
+  ['planet-search', 'planet-search-env'].forEach(id => {
+    const el = $(id);
+    if (el) { if (el.value !== texto) el.value = texto; el.closest('.search-row').classList.toggle('con-texto', !!texto); }
+  });
+  const recibidas = allConsultas.filter(c => c.direccion === 'cliente_a_planet');
+  const enviadas = allConsultas.filter(c => c.direccion === 'planet_a_cliente');
+  renderPlanetConsultas(recibidas);
+  renderPlanetEnviadas(enviadas);
+}
+
+// ── Buscador del cliente ──
+function setBusquedaCliente(texto) {
+  busquedaCliente = texto;
+  const el = $('client-search');
+  if (el) { if (el.value !== texto) el.value = texto; el.closest('.search-row').classList.toggle('con-texto', !!texto); }
+  Object.keys(_listasCliente).forEach(pintarListaCliente);
+}
+
+// Botón para dar vuelta el orden
+function chipOrden() {
+  return `<button class="client-chip orden-chip" onclick="toggleOrden()" title="Cambiar el orden: por última actividad">${textoOrden()}</button>`;
+}
+function textoOrden() { return ordenNuevasPrimero ? '↓ Más recientes' : '↑ Más antiguas'; }
+function toggleOrden() {
+  ordenNuevasPrimero = !ordenNuevasPrimero;
+  try { localStorage.setItem('planet_orden', ordenNuevasPrimero ? '1' : '0'); } catch (e) {}
+  document.querySelectorAll('.orden-chip').forEach(b => { b.textContent = textoOrden(); });
+  toast(ordenNuevasPrimero ? 'Primero las más recientes' : 'Primero las más antiguas');
+  if (currentUser && currentUser.team === 'planet') setBusqueda(busquedaPlanet);
+  else Object.keys(_listasCliente).forEach(pintarListaCliente);
+}
+try { ordenNuevasPrimero = localStorage.getItem('planet_orden') !== '0'; } catch (e) {}
+
 function grupoPlanet(estado) {
   if (estado === 'Abierto' || estado === 'Respuesta cliente') return 'pendiente';
   if (estado === 'En proceso') return 'proceso';
@@ -2088,17 +2252,30 @@ function renderClientList(consultas, containerId, isPlanetQuery, vacio) {
     const act = vista === t.g, col = GRUPOS[t.g].color;
     return `<button class="client-chip ${act ? 'active' : ''}" data-v="${t.g}" onclick="clientEstadoTab('${containerId}','${t.g}',this)" style="${act ? '' : 'border-color:' + col + ';color:' + col + ';'}">${t.icono} ${t.label} <span class="cnt">${n(t.g)}</span></button>`;
   }).join('') +
-    `<button class="client-chip ${vista === 'Todos' ? 'active' : ''}" data-v="Todos" onclick="clientEstadoTab('${containerId}','Todos',this)">Todas <span class="cnt">${consultas.length}</span></button>`;
+    `<button class="client-chip ${vista === 'Todos' ? 'active' : ''}" data-v="Todos" onclick="clientEstadoTab('${containerId}','Todos',this)">Todas <span class="cnt">${consultas.length}</span></button>` + chipOrden();
   $(containerId).innerHTML = `<div class="client-filter estado-chips">${chips}</div><div class="estado-lista"></div>`;
   pintarListaCliente(containerId);
 }
 
 function pintarListaCliente(containerId) {
-  const { consultas, isPlanetQuery } = _listasCliente[containerId];
+  const guardado = _listasCliente[containerId];
+  if (!guardado) return;
+  const isPlanetQuery = guardado.isPlanetQuery;
+  const consultas = busquedaCliente ? guardado.consultas.filter(c => coincide(c, busquedaCliente)) : guardado.consultas;
   const vista = clientTabEstado[containerId];
   const cont = $(containerId).querySelector('.estado-lista');
+  if (!cont) return;
+  // Buscando: mostramos todas las coincidencias, sin separar por estado
+  if (busquedaCliente) {
+    actualizarFab();
+    cont.innerHTML = consultas.length
+      ? `<div class="search-info">${consultas.length} resultado${consultas.length === 1 ? '' : 's'}</div>` +
+        ordenar(consultas).map(c => renderClientConsultaCard(c, grupoCliente(c.estado) === 'cerrado', isPlanetQuery)).join('')
+      : `<div class="empty-state"><p>No encontramos consultas con “${esc(busquedaCliente)}”</p></div>`;
+    return;
+  }
   if (vista !== 'Todos') {
-    const lista = consultas.filter(c => grupoCliente(c.estado) === vista);
+    const lista = ordenar(consultas.filter(c => grupoCliente(c.estado) === vista));
     const t = SOLAPAS_CLIENTE.find(x => x.g === vista);
     cont.innerHTML = lista.length
       ? lista.map(c => renderClientConsultaCard(c, false, isPlanetQuery)).join('')
@@ -2112,12 +2289,13 @@ function pintarListaCliente(containerId) {
     html += `<div class="section-label" style="${html ? 'margin-top:20px;' : ''}${color ? 'color:' + color : ''}">${titulo}</div>`;
     list.forEach(c => { html += renderClientConsultaCard(c, dimmed, isPlanetQuery); });
   };
-  const de = g => consultas.filter(c => grupoCliente(c.estado) === g);
+  const de = g => ordenar(consultas.filter(c => grupoCliente(c.estado) === g));
   seccion('Esperan tu respuesta', de('espera'), 'var(--wait)', false);
   seccion('Pendientes', de('pendiente'), '', false);
   seccion('En proceso', de('proceso'), '', false);
   seccion('Cerradas', de('cerrado'), '', true);
   cont.innerHTML = html;
+  actualizarFab();
 }
 
 function clientEstadoTab(containerId, vista, btn) {
@@ -2178,7 +2356,7 @@ function renderClientConsultaCard(c, dimmed, isPlanetQuery) {
         </div>
         <div class="card-asunto">${esc(c.asunto)}</div>
       </div>
-      <div class="consulta-detail">${timelineHtml}</div>
+      <div class="consulta-detail"><div class="msgs-scroll" id="msgs-c${c.id}">${timelineHtml}</div></div>
       ${!canReply && msgs.length > 0 ? `<div class="consulta-detail" style="padding-top:0;font-size:12px;color:var(--text-muted);font-style:italic;">📋 ${msgs.length} mensaje${msgs.length>1?'s':''} en historial</div>` : ''}
       ${replyHtml}
     </div>`;
@@ -2412,6 +2590,7 @@ function renderPlanetData(lista) {
     ${chip('espera','💬')}
     ${chip('cerrado','✓')}
     <button class="client-chip ${planetEstadoFilter==='Todos'?'active':''}" onclick="setPlanetEstadoFilter('Todos',this)">Todos</button>
+    ${chipOrden()}
   `;
 
   // Client filter chips — only show clients that have consultas
@@ -2457,15 +2636,26 @@ function renderPlanetConsultas(consultas) {
   if (planetEstadoFilter !== 'Todos') {
     filtered = filtered.filter(c => grupoPlanet(c.estado) === planetEstadoFilter);
   }
+  if (busquedaPlanet) filtered = filtered.filter(c => coincide(c, busquedaPlanet));
+
+  const info = $('planet-search-info');
+  if (info) {
+    info.hidden = !busquedaPlanet;
+    info.textContent = busquedaPlanet
+      ? `${filtered.length} resultado${filtered.length === 1 ? '' : 's'} para “${busquedaPlanet}”`
+      : '';
+  }
 
   if (filtered.length === 0) {
-    $('planet-consultas-list').innerHTML = '<div class="empty-state"><p>No hay consultas' + (planetFilter !== 'Todos' || planetEstadoFilter !== 'Todos' ? ' con ese filtro' : '') + '</p></div>';
+    const conFiltro = planetFilter !== 'Todos' || planetEstadoFilter !== 'Todos' || busquedaPlanet;
+    $('planet-consultas-list').innerHTML = '<div class="empty-state"><p>No hay consultas' + (conFiltro ? ' con ese filtro' : '') + '</p></div>';
     return;
   }
   $('planet-consultas-list').innerHTML = renderPlanetGrupos(filtered, false);
 }
 
 function renderPlanetEnviadas(consultas) {
+  if (busquedaPlanet) consultas = consultas.filter(c => coincide(c, busquedaPlanet));
   if (consultas.length === 0) {
     $('planet-enviadas-list').innerHTML = '<div class="empty-state"><p>No hay consultas enviadas</p></div>';
     return;
@@ -2483,7 +2673,7 @@ function renderPlanetGrupos(consultas, isPlanetQuery) {
   };
   let html = '';
   ['pendiente','proceso','espera','cerrado'].forEach(g => {
-    const list = consultas.filter(c => grupoPlanet(c.estado) === g);
+    const list = ordenar(consultas.filter(c => grupoPlanet(c.estado) === g));
     if (list.length === 0) return;
     const color = g === 'pendiente' ? 'var(--danger)' : g === 'cerrado' ? '' : GRUPOS[g].color;
     html += `<div class="section-label" style="${html ? 'margin-top:20px;' : ''}${color ? 'color:' + color : ''}">${titulos[g]}</div>`;
@@ -2503,7 +2693,7 @@ function renderTicketCard(c, isPlanetQuery) {
   // Thread — always show history, reply bar only if not closed
   let threadHtml = '';
   if (msgs.length > 0) {
-    threadHtml += '<div class="ticket-thread">';
+    threadHtml += '<div class="ticket-thread"><div class="msgs-scroll" id="msgs-p' + c.id + '">';
     msgs.forEach(m => {
       const col = avatarColor(m.nombre || m.autor);
       threadHtml += `
@@ -2519,6 +2709,7 @@ function renderTicketCard(c, isPlanetQuery) {
           </div>
         </div>`;
     });
+    threadHtml += '</div>';   // cierra .msgs-scroll
     // Reply bar only if not closed
     if (grupo !== 'cerrado') {
       threadHtml += `
