@@ -2567,6 +2567,7 @@ async function sendClientNewQuery() {
   const res = await api({
     imagenes: JSON.stringify(imagenesNq),
     action: 'nueva_consulta',
+    tipo: tipo,
     asunto: asunto,
     cliente: currentUser.cliente,
     direccion: 'cliente_a_planet',
@@ -3006,6 +3007,7 @@ async function sendPlanetNewQuery() {
   const res = await api({
     imagenes: JSON.stringify(imagenesPnq),
     action: 'nueva_consulta',
+    tipo: tipo,
     asunto: asunto,
     cliente: cliente,
     direccion: 'planet_a_cliente',

@@ -52,6 +52,31 @@ function ahoraAR(soloFecha = false) {
   return soloFecha ? fecha : `${fecha} ${g('hour')}:${g('minute')}`;
 }
 
+// Pasa "23/09/2026 14:05" (hora de Argentina) a milisegundos.
+// Lo usamos para medir tiempos sin depender del texto.
+function msDeFechaAR(texto) {
+  const m = String(texto || '').match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
+  if (!m) return 0;
+  // Argentina es UTC-3 todo el año
+  return Date.UTC(+m[3], +m[2] - 1, +m[1], +(m[4] || 0) + 3, +(m[5] || 0));
+}
+
+// El tipo de problema es la última parte del asunto: "152089 · NUME · No entregado"
+function tipoDeAsunto(asunto) {
+  const partes = String(asunto || '').split(' · ');
+  return partes.length > 1 ? partes[partes.length - 1].trim() : '';
+}
+
+// ── MÉTRICAS: cada cambio queda anotado ────────────────────
+// Sin esto no se puede saber cuánto tardó una consulta en resolverse,
+// ni separar el tiempo nuestro del tiempo que esperamos al cliente.
+function anotarEvento(db, { consultaId, evento, de = '', a = '', me }) {
+  return db.prepare(
+    `INSERT INTO eventos (consulta_id, evento, de_estado, a_estado, quien, nombre, equipo, cuando)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(consultaId, evento, de || '', a || '', me.usuario, me.nombre, me.team || '', Date.now());
+}
+
 // ── CONTRASEÑAS ────────────────────────────────────────────
 // Antes se guardaban en texto plano en la planilla. Ahora se guarda
 // solo un resumen irreversible: ni nosotros podemos leer la original.
@@ -168,6 +193,9 @@ async function listarConsultas(db, me, p) {
     id: c.id, fecha: c.fecha, asunto: c.asunto, cliente: c.cliente,
     direccion: c.direccion, estado: c.estado, creado_por: c.creado_por,
     nombre_creador: c.nombre_creador, atendido_por: c.atendido_por || '',
+    tipo: c.tipo || tipoDeAsunto(c.asunto),
+    creado_en: c.creado_en || msDeFechaAR(c.fecha),
+    cerrado_en: c.cerrado_en || null,
     mensajes: porConsulta.get(c.id) || [],
   }));
 }
@@ -200,6 +228,91 @@ async function listarNotas(db, me) {
 }
 
 // ── ACCIONES ───────────────────────────────────────────────
+// ── PREPARAR LA BASE PARA LAS MÉTRICAS ─────────────────────
+// Agrega las columnas nuevas, crea la tabla de eventos y completa lo que se
+// puede de las consultas que ya existían. Corre sola la primera vez y queda
+// marcada como hecha. Volver a correrla no rompe nada: todo es "si no existe".
+const MARCA_METRICAS = 'migracion_metricas_v1';
+let metricasListas = false;   // por isolate, para no leer KV en cada pedido
+
+async function prepararMetricas(env) {
+  if (metricasListas) return null;
+  const db = env.DB;
+  if (env.IMAGENES && (await env.IMAGENES.get(MARCA_METRICAS))) {
+    metricasListas = true;
+    return null;
+  }
+
+  const columnas = async (tabla) => {
+    const { results } = await db.prepare(`PRAGMA table_info(${tabla})`).all();
+    return results.map((c) => c.name);
+  };
+
+  const agregadas = [];
+  for (const [tabla, col, tipoSql] of [
+    ['consultas', 'tipo', "TEXT NOT NULL DEFAULT ''"],
+    ['consultas', 'creado_en', 'INTEGER NOT NULL DEFAULT 0'],
+    ['consultas', 'cerrado_en', 'INTEGER'],
+    ['consultas', 'cierre_aprox', 'INTEGER NOT NULL DEFAULT 0'],
+    ['mensajes', 'creado_en', 'INTEGER NOT NULL DEFAULT 0'],
+    ['mensajes', 'equipo', "TEXT NOT NULL DEFAULT ''"],
+  ]) {
+    if (!(await columnas(tabla)).includes(col)) {
+      await db.prepare(`ALTER TABLE ${tabla} ADD COLUMN ${col} ${tipoSql}`).run();
+      agregadas.push(`${tabla}.${col}`);
+    }
+  }
+
+  await db.prepare(
+    `CREATE TABLE IF NOT EXISTS eventos (
+       id          INTEGER PRIMARY KEY AUTOINCREMENT,
+       consulta_id INTEGER NOT NULL,
+       evento      TEXT NOT NULL,
+       de_estado   TEXT NOT NULL DEFAULT '',
+       a_estado    TEXT NOT NULL DEFAULT '',
+       quien       TEXT NOT NULL DEFAULT '',
+       nombre      TEXT NOT NULL DEFAULT '',
+       equipo      TEXT NOT NULL DEFAULT '',
+       cuando      INTEGER NOT NULL
+     )`
+  ).run();
+  await db.prepare('CREATE INDEX IF NOT EXISTS idx_eventos_consulta ON eventos(consulta_id, cuando)').run();
+  await db.prepare('CREATE INDEX IF NOT EXISTS idx_eventos_cuando ON eventos(cuando)').run();
+
+  // Completar lo que se pueda de las consultas viejas (solo columnas nuevas)
+  const { results: viejas } = await db.prepare(
+    'SELECT id, fecha, asunto, estado, actualizado, tipo, creado_en FROM consultas'
+  ).all();
+  const arreglos = [];
+  for (const c of viejas) {
+    // De las cerradas viejas no sabemos el momento exacto del cierre: usamos el
+    // último cambio como aproximación y lo dejamos marcado como aproximado.
+    const cerrado = c.estado === 'Cerrado' ? (c.actualizado || null) : null;
+    arreglos.push(
+      db.prepare('UPDATE consultas SET tipo = ?, creado_en = ?, cerrado_en = ?, cierre_aprox = ? WHERE id = ?')
+        .bind(c.tipo || tipoDeAsunto(c.asunto), c.creado_en || msDeFechaAR(c.fecha), cerrado, cerrado ? 1 : 0, c.id)
+    );
+  }
+
+  const { results: msgs } = await db.prepare(
+    `SELECT m.id, m.fecha, COALESCE(u.team, '') AS team
+     FROM mensajes m LEFT JOIN usuarios u ON u.usuario = m.autor
+     WHERE m.creado_en = 0 OR m.equipo = ''`
+  ).all();
+  for (const m of msgs) {
+    arreglos.push(
+      db.prepare('UPDATE mensajes SET creado_en = ?, equipo = ? WHERE id = ?')
+        .bind(msDeFechaAR(m.fecha), m.team || '', m.id)
+    );
+  }
+
+  for (let k = 0; k < arreglos.length; k += 50) await db.batch(arreglos.slice(k, k + 50));
+
+  if (env.IMAGENES) await env.IMAGENES.put(MARCA_METRICAS, String(Date.now()));
+  metricasListas = true;
+  return { agregadas, consultas: viejas.length, mensajes: msgs.length };
+}
+
 async function manejar(action, p, env, origen) {
   const db = env.DB;
 
@@ -267,17 +380,21 @@ async function manejar(action, p, env, origen) {
       if (!asunto || !cliente || !mensaje) return err('Faltan campos obligatorios');
 
       const fecha = ahoraAR();
+      const ahora = Date.now();
+      const tipo = (p.tipo || tipoDeAsunto(asunto) || '').trim();
       const estado = direccion === 'planet_a_cliente' ? 'Esperando info' : 'Abierto';
       const res = await db.prepare(
-        `INSERT INTO consultas (fecha, asunto, cliente, direccion, estado, creado_por, nombre_creador, atendido_por, actualizado)
-         VALUES (?, ?, ?, ?, ?, ?, ?, '', ?)`
-      ).bind(fecha, asunto, cliente, direccion, estado, me.usuario, me.nombre, Date.now()).run();
+        `INSERT INTO consultas (fecha, asunto, cliente, direccion, estado, creado_por, nombre_creador, atendido_por, actualizado, tipo, creado_en)
+         VALUES (?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?)`
+      ).bind(fecha, asunto, cliente, direccion, estado, me.usuario, me.nombre, ahora, tipo, ahora).run();
 
       const id = res.meta.last_row_id;
       const imgs = p.imagenes ? imagenesValidas(p.imagenes) : [];
-      await db.prepare(
-        'INSERT INTO mensajes (consulta_id, autor, nombre, fecha, texto, imagenes) VALUES (?, ?, ?, ?, ?, ?)'
-      ).bind(id, me.usuario, me.nombre, fecha, mensaje, imgs.length ? JSON.stringify(imgs) : null).run();
+      await db.batch([
+        db.prepare('INSERT INTO mensajes (consulta_id, autor, nombre, fecha, texto, imagenes, creado_en, equipo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+          .bind(id, me.usuario, me.nombre, fecha, mensaje, imgs.length ? JSON.stringify(imgs) : null, ahora, me.team || ''),
+        anotarEvento(db, { consultaId: id, evento: 'creada', a: estado, me }),
+      ]);
 
       return ok({ id });
     }
@@ -295,9 +412,11 @@ async function manejar(action, p, env, origen) {
       if (c.estado === 'Cerrado') return err('La consulta está cerrada');
 
       const fecha = ahoraAR();
+      const ahora = Date.now();
       const ops = [
-        db.prepare('INSERT INTO mensajes (consulta_id, autor, nombre, fecha, texto, imagenes) VALUES (?, ?, ?, ?, ?, ?)')
-          .bind(id, me.usuario, me.nombre, fecha, texto, imgs.length ? JSON.stringify(imgs) : null),
+        db.prepare('INSERT INTO mensajes (consulta_id, autor, nombre, fecha, texto, imagenes, creado_en, equipo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+          .bind(id, me.usuario, me.nombre, fecha, texto, imgs.length ? JSON.stringify(imgs) : null, ahora, me.team || ''),
+        anotarEvento(db, { consultaId: id, evento: 'mensaje', de: c.estado, me }),
         // Marca la consulta como cambiada, para que los demás lo vean sin recargar
         db.prepare('UPDATE consultas SET actualizado = ? WHERE id = ?').bind(Date.now(), id),
       ];
@@ -318,6 +437,7 @@ async function manejar(action, p, env, origen) {
       }
       if (nuevoEstado && nuevoEstado !== c.estado) {
         ops.push(db.prepare('UPDATE consultas SET estado = ? WHERE id = ?').bind(nuevoEstado, id));
+        ops.push(anotarEvento(db, { consultaId: id, evento: 'estado', de: c.estado, a: nuevoEstado, me }));
       }
 
       await db.batch(ops);
@@ -327,12 +447,24 @@ async function manejar(action, p, env, origen) {
     case 'cambiar_estado': {
       const { id, estado, atendido_por } = p;
       if (!id || !estado) return err('Faltan campos');
-      const res = atendido_por
-        ? await db.prepare('UPDATE consultas SET estado = ?, atendido_por = ?, actualizado = ? WHERE id = ?')
-            .bind(estado, atendido_por, Date.now(), id).run()
-        : await db.prepare('UPDATE consultas SET estado = ?, actualizado = ? WHERE id = ?')
-            .bind(estado, Date.now(), id).run();
-      if (!res.meta.changes) return err('Consulta no encontrada');
+      const antes = await db.prepare('SELECT estado FROM consultas WHERE id = ?').bind(id).first();
+      if (!antes) return err('Consulta no encontrada');
+
+      const ahora = Date.now();
+      // Al cerrar se guarda el momento exacto (es lo que mide el tiempo de resolución).
+      // Si se reabre, se borra para no dejar un cierre falso.
+      const cierre = estado === 'Cerrado' ? ahora : null;
+      const ops = [
+        atendido_por
+          ? db.prepare('UPDATE consultas SET estado = ?, atendido_por = ?, actualizado = ?, cerrado_en = ? WHERE id = ?')
+              .bind(estado, atendido_por, ahora, cierre, id)
+          : db.prepare('UPDATE consultas SET estado = ?, actualizado = ?, cerrado_en = ? WHERE id = ?')
+              .bind(estado, ahora, cierre, id),
+      ];
+      if (estado !== antes.estado) {
+        ops.push(anotarEvento(db, { consultaId: id, evento: 'estado', de: antes.estado, a: estado, me }));
+      }
+      await db.batch(ops);
       return ok({});
     }
 
@@ -537,6 +669,14 @@ export default {
     const callback = p.callback;
     const action = p.action || '';
     if (!action) return responder(err('Falta el parámetro action'), callback);
+
+    // La primera vez que arranca con la versión nueva, prepara la base
+    try {
+      const hecho = await prepararMetricas(env);
+      if (hecho) console.log('Métricas listas:', JSON.stringify(hecho));
+    } catch (e) {
+      console.log('Aviso: no se pudo preparar las métricas:', e.message);
+    }
 
     try {
       return responder(await manejar(action, p, env, url.origin), callback);

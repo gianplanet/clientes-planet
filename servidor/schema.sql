@@ -35,7 +35,12 @@ CREATE TABLE consultas (
   atendido_por   TEXT NOT NULL DEFAULT '',
   -- Momento del último cambio (ms). Sirve para que el portal pregunte
   -- "¿hay algo nuevo?" leyendo una sola fila, en vez de traerse todo.
-  actualizado    INTEGER NOT NULL DEFAULT 0
+  actualizado    INTEGER NOT NULL DEFAULT 0,
+  -- ── Métricas ──
+  tipo           TEXT NOT NULL DEFAULT '',        -- tipo de problema, para poder contarlos
+  creado_en      INTEGER NOT NULL DEFAULT 0,      -- alta (ms)
+  cerrado_en     INTEGER,                         -- cierre (ms); NULL si sigue abierta
+  cierre_aprox   INTEGER NOT NULL DEFAULT 0       -- 1 = cierre estimado (consultas anteriores a las métricas)
 );
 CREATE INDEX idx_consultas_cliente     ON consultas(cliente);
 CREATE INDEX idx_consultas_estado      ON consultas(estado);
@@ -53,9 +58,28 @@ CREATE TABLE mensajes (
   fecha       TEXT NOT NULL,
   texto       TEXT NOT NULL DEFAULT '',
   imagenes    TEXT,                                -- JSON array de URLs, o NULL
+  creado_en   INTEGER NOT NULL DEFAULT 0,          -- momento del mensaje (ms), para medir tiempos
+  equipo      TEXT NOT NULL DEFAULT ''             -- 'planet' | 'cliente', quién contestó
   FOREIGN KEY (consulta_id) REFERENCES consultas(id) ON DELETE CASCADE
 );
 CREATE INDEX idx_mensajes_consulta ON mensajes(consulta_id, id);
+
+-- ── EVENTOS (para las métricas) ───────────────────────────
+-- Una fila por cada cosa que le pasa a una consulta: se creó, cambió de
+-- estado, alguien escribió. Es lo que permite medir tiempos por etapa.
+CREATE TABLE eventos (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  consulta_id INTEGER NOT NULL,
+  evento      TEXT NOT NULL,                       -- 'creada' | 'estado' | 'mensaje'
+  de_estado   TEXT NOT NULL DEFAULT '',
+  a_estado    TEXT NOT NULL DEFAULT '',
+  quien       TEXT NOT NULL DEFAULT '',
+  nombre      TEXT NOT NULL DEFAULT '',
+  equipo      TEXT NOT NULL DEFAULT '',
+  cuando      INTEGER NOT NULL
+);
+CREATE INDEX idx_eventos_consulta ON eventos(consulta_id, cuando);
+CREATE INDEX idx_eventos_cuando   ON eventos(cuando);
 
 -- ── CLIENTES ──────────────────────────────────────────────
 -- Antes: hoja PortalClientes
