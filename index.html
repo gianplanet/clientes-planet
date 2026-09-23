@@ -1215,7 +1215,11 @@ body {
 
 <script>
 // ── CONFIG ──
-const API = 'https://script.google.com/macros/s/AKfycby0FMDtAd0j8bRVX8UVmYjuqrgp46f5QCmKbOwuiLHcPsfTLNkLppfjP9vLItq6mebeBA/exec';
+// Servidor en Cloudflare (código en servidor/). Antes esto era Apps Script,
+// que tardaba 3-8 s y se caía seguido. Para volver atrás, alcanza con poner
+// de nuevo la URL vieja acá: la planilla de Google sigue intacta.
+//   vieja: https://script.google.com/macros/s/AKfycby0FMDtAd0j8bRVX8UVmYjuqrgp46f5QCmKbOwuiLHcPsfTLNkLppfjP9vLItq6mebeBA/exec
+const API = 'https://portal-planet.gianlucca-planet.workers.dev';
 
 let currentUser = null;     // {usuario, nombre, team, cliente, role}
 let allConsultas = [];       // loaded from API
@@ -1538,8 +1542,9 @@ let _jsonpId = 0;
 // Acciones que se pueden repetir sin riesgo (solo leen datos o inician sesión)
 const API_REINTENTABLES = ['login', 'consultas', 'clientes', 'usuarios', 'notas'];
 
-// Llama al servidor. Cuando Google anda bien responde en 2-8 s; cuando falla se cuelga ~30 s.
-// Por eso, en acciones seguras cortamos a los 12 s y reintentamos (hasta 3 intentos).
+// Llama al servidor. Cloudflare responde en ~200 ms, así que los tiempos de
+// espera de abajo son de sobra: están por si el celular tiene mala señal.
+// En acciones seguras (solo lecturas) reintenta hasta 3 veces.
 async function api(params) {
   const seguro = API_REINTENTABLES.indexOf(params.action) >= 0;
   let res;
@@ -1565,7 +1570,7 @@ async function apiOnce(params, timeoutMs) {
     const r = await fetch(url, { signal: ctrl.signal, redirect: 'follow' });
     const text = await r.text();
     try { return JSON.parse(text); }
-    // Google devolvió su página de error ("No se pudo abrir el archivo"): servidor momentáneamente caído
+    // No vino JSON: el servidor devolvió una página de error
     catch (e) { return NO_DISPONIBLE_RES(); }
   } catch (e) {
     if (e.name === 'AbortError') return TIMEOUT_RES();
@@ -1581,7 +1586,7 @@ async function apiPost(params) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 90000);
   try {
-    // text/plain evita el "preflight" CORS que Apps Script no soporta
+    // Sin cabeceras extra: así el navegador no hace el "preflight" de CORS
     const r = await fetch(API, { method: 'POST', body: JSON.stringify(params), signal: ctrl.signal, redirect: 'follow' });
     const text = await r.text();
     let res;
@@ -1598,7 +1603,7 @@ async function apiPost(params) {
 const API_TIMEOUT_MS = 30000;        // mensajes y cambios de estado (no se reintentan)
 const API_TIMEOUT_RAPIDO_MS = 12000; // login y lecturas (se reintentan)
 const TIMEOUT_RES = () => ({ ok: false, timeout: true, error: 'El servidor tardó demasiado en responder. Probá de nuevo en unos segundos.' });
-const NO_DISPONIBLE_RES = () => ({ ok: false, timeout: true, error: 'Google no pudo atender el pedido en este momento. Probá de nuevo en unos segundos.' });
+const NO_DISPONIBLE_RES = () => ({ ok: false, timeout: true, error: 'El servidor no pudo atender el pedido en este momento. Probá de nuevo en unos segundos.' });
 
 function apiJsonp(params) {
   return new Promise((resolve) => {
@@ -1852,7 +1857,10 @@ async function subirImagenes(clave, btn) {
   return ids;
 }
 
+// Las fotos nuevas se guardan en Cloudflare y vienen como URL completa.
+// Las de antes de la mudanza son ids de Google Drive y siguen funcionando.
 function urlImagen(id, ancho) {
+  if (/^https?:\/\//.test(id)) return id;
   return 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(id) + '&sz=w' + ancho;
 }
 function imagenesMsgHtml(ids) {
@@ -1862,7 +1870,9 @@ function imagenesMsgHtml(ids) {
 }
 function verImagen(id) {
   $('lightbox-img').src = urlImagen(id, 1600);
-  $('lightbox-link').href = 'https://drive.google.com/file/d/' + encodeURIComponent(id) + '/view';
+  $('lightbox-link').href = /^https?:\/\//.test(id)
+    ? id
+    : 'https://drive.google.com/file/d/' + encodeURIComponent(id) + '/view';
   $('lightbox').classList.add('active');
 }
 function cerrarImagen() {

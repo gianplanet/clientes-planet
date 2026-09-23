@@ -1,0 +1,16 @@
+name = "portal-planet"
+main = "src/index.js"
+compatibility_date = "2025-05-01"
+
+# Base de datos (reemplaza las hojas de Google)
+[[d1_databases]]
+binding = "DB"
+database_name = "portal-planet"
+database_id = "f1635005-6e4e-4555-8d05-b52d28f56702"
+
+# Imágenes (KV: 1 GB gratis, sin tarjeta).
+# Si algún día se queda corto, se pasa a R2 cambiando esto y las dos
+# funciones de guardarImagen/leerImagen en src/index.js.
+[[kv_namespaces]]
+binding = "IMAGENES"
+id = "fea0791d86b041938d0250dfed1ea6d9"

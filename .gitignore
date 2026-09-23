@@ -3,3 +3,7 @@ backend/
 
 # Configuración local de Claude (vista previa)
 .claude/
+
+# Estado local de wrangler (la herramienta de Cloudflare)
+.wrangler/
+servidor/node_modules/
