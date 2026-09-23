@@ -172,6 +172,16 @@ async function listarConsultas(db, me, p) {
   }));
 }
 
+// Marca del último cambio visible para este usuario. Un cliente solo "ve"
+// los cambios de su empresa. Se usa igual al cargar y al preguntar por
+// novedades, para que las dos cuentas den lo mismo.
+async function ultimoCambio(db, me) {
+  const fila = esPlanet(me)
+    ? await db.prepare('SELECT MAX(actualizado) u FROM consultas').first()
+    : await db.prepare('SELECT MAX(actualizado) u FROM consultas WHERE cliente = ?').bind(me.cliente).first();
+  return fila?.u || 0;
+}
+
 async function listarNotas(db, me) {
   const { results } = await db.prepare(
     'SELECT * FROM notas WHERE lower(autor) = lower(?) ORDER BY id'
@@ -220,6 +230,7 @@ async function manejar(action, p, env, origen) {
       return ok({
         token,
         consultas: await listarConsultas(db, user, {}),
+        ultimo: await ultimoCambio(db, user),
         notas: esPlanet(user) ? await listarNotas(db, user) : undefined,
         user: {
           usuario: user.usuario, nombre: user.nombre, team: user.team,
@@ -234,10 +245,19 @@ async function manejar(action, p, env, origen) {
 
     // ── CONSULTAS ──
     case 'consultas': {
-      const res = ok({ consultas: await listarConsultas(db, me, p) });
+      const res = ok({
+        consultas: await listarConsultas(db, me, p),
+        ultimo: await ultimoCambio(db, me),
+      });
       if (esPlanet(me)) res.notas = await listarNotas(db, me);
       return res;
     }
+
+    // Pregunta barata que el portal hace cada 30 s: devuelve solo la marca
+    // del último cambio. Lee una fila (va por índice), no las 97 consultas
+    // con sus 225 mensajes. Recién si la marca cambió, el portal pide todo.
+    case 'novedades':
+      return ok({ ultimo: await ultimoCambio(db, me) });
 
     case 'nueva_consulta': {
       const asunto = p.asunto || '';
@@ -249,9 +269,9 @@ async function manejar(action, p, env, origen) {
       const fecha = ahoraAR();
       const estado = direccion === 'planet_a_cliente' ? 'Esperando info' : 'Abierto';
       const res = await db.prepare(
-        `INSERT INTO consultas (fecha, asunto, cliente, direccion, estado, creado_por, nombre_creador, atendido_por)
-         VALUES (?, ?, ?, ?, ?, ?, ?, '')`
-      ).bind(fecha, asunto, cliente, direccion, estado, me.usuario, me.nombre).run();
+        `INSERT INTO consultas (fecha, asunto, cliente, direccion, estado, creado_por, nombre_creador, atendido_por, actualizado)
+         VALUES (?, ?, ?, ?, ?, ?, ?, '', ?)`
+      ).bind(fecha, asunto, cliente, direccion, estado, me.usuario, me.nombre, Date.now()).run();
 
       const id = res.meta.last_row_id;
       const imgs = p.imagenes ? imagenesValidas(p.imagenes) : [];
@@ -278,6 +298,8 @@ async function manejar(action, p, env, origen) {
       const ops = [
         db.prepare('INSERT INTO mensajes (consulta_id, autor, nombre, fecha, texto, imagenes) VALUES (?, ?, ?, ?, ?, ?)')
           .bind(id, me.usuario, me.nombre, fecha, texto, imgs.length ? JSON.stringify(imgs) : null),
+        // Marca la consulta como cambiada, para que los demás lo vean sin recargar
+        db.prepare('UPDATE consultas SET actualizado = ? WHERE id = ?').bind(Date.now(), id),
       ];
 
       // Flujo de estados (igual que antes):
@@ -306,9 +328,10 @@ async function manejar(action, p, env, origen) {
       const { id, estado, atendido_por } = p;
       if (!id || !estado) return err('Faltan campos');
       const res = atendido_por
-        ? await db.prepare('UPDATE consultas SET estado = ?, atendido_por = ? WHERE id = ?')
-            .bind(estado, atendido_por, id).run()
-        : await db.prepare('UPDATE consultas SET estado = ? WHERE id = ?').bind(estado, id).run();
+        ? await db.prepare('UPDATE consultas SET estado = ?, atendido_por = ?, actualizado = ? WHERE id = ?')
+            .bind(estado, atendido_por, Date.now(), id).run()
+        : await db.prepare('UPDATE consultas SET estado = ?, actualizado = ? WHERE id = ?')
+            .bind(estado, Date.now(), id).run();
       if (!res.meta.changes) return err('Consulta no encontrada');
       return ok({});
     }

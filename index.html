@@ -1635,6 +1635,56 @@ function apiJsonp(params) {
   });
 }
 
+// ── ACTUALIZACIÓN AUTOMÁTICA ──
+// Cada 30 s el portal pregunta si hubo cambios. Esa pregunta es barata: el
+// servidor devuelve un solo número (cuándo fue el último cambio), no las
+// consultas. Recién si el número cambió vuelve a pedir la lista completa.
+const REVISAR_CADA_MS = 30000;
+let marcaCambios = 0;      // el último cambio que ya está en pantalla
+let revisarTimer = null;
+let revisando = false;
+
+// No interrumpe a alguien que está en el medio de algo: al volver a dibujar
+// la lista se borraría lo que está escribiendo. En ese caso espera al
+// próximo turno, y ahí sí actualiza.
+function estaOcupado() {
+  if (document.querySelector('.modal-overlay.active')) return true;
+  if (document.querySelector('#lightbox.active')) return true;
+  const foco = document.activeElement;
+  if (foco && (foco.tagName === 'INPUT' || foco.tagName === 'TEXTAREA')) return true;
+  return [...document.querySelectorAll('input[id^="reply-"]')].some(i => i.value.trim() !== '');
+}
+
+async function revisarNovedades() {
+  if (revisando || !currentUser || document.hidden) return;
+  revisando = true;
+  try {
+    const res = await api({ action: 'novedades' });
+    if (!res || !res.ok || !currentUser) return;
+    if (Number(res.ultimo) === marcaCambios) return;   // no pasó nada
+    if (estaOcupado()) return;                         // hay novedades, pero mejor no cortarle
+    if (currentUser.team === 'planet') await loadPlanetData();
+    else await loadClientData();
+  } finally {
+    revisando = false;
+  }
+}
+
+function arrancarRevision() {
+  pararRevision();
+  revisarTimer = setInterval(revisarNovedades, REVISAR_CADA_MS);
+}
+
+function pararRevision() {
+  if (revisarTimer) { clearInterval(revisarTimer); revisarTimer = null; }
+}
+
+// Con la pestaña en segundo plano no tiene sentido preguntar (y gasta
+// pedidos al dope). Al volver a ella, revisa en el acto.
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && currentUser) revisarNovedades();
+});
+
 // ── LOGIN ──
 async function doLogin() {
   const user = $('login-user').value.trim();
@@ -1665,6 +1715,8 @@ async function doLogin() {
   currentUser = res.user;
   currentUser.token = res.token;
   datosMostrados = false;
+  marcaCambios = Number(res.ultimo) || 0;
+  arrancarRevision();
   try { localStorage.setItem('planet_user', JSON.stringify(currentUser)); } catch(e) {}
 
   // El servidor ya manda las consultas junto con el login: no hace falta otro pedido
@@ -1678,6 +1730,7 @@ async function doLogin() {
 }
 
 function doLogout(sessionAlreadyInvalid) {
+  pararRevision();
   if (currentUser && currentUser.token && sessionAlreadyInvalid !== true) {
     api({ action: 'logout', token: currentUser.token });
   }
@@ -1712,6 +1765,7 @@ function tryAutoLogin() {
       }
       if (currentUser.team === 'planet') initPlanetView();
       else initClientView();
+      arrancarRevision();
     }
   } catch(e) {}
 }
@@ -1912,6 +1966,7 @@ async function loadClientData(prefetched) {
       else $('client-mis-list').innerHTML = '<div class="empty-state"><p>Error: ' + esc(res.error) + '</p></div>';
       return;
     }
+    if (res.ultimo !== undefined) marcaCambios = Number(res.ultimo);
     lista = res.consultas;
   }
   guardarCache(lista);
@@ -2542,6 +2597,7 @@ async function loadPlanetData(prefetched) {
       return;
     }
     if (res.notas) setNotas(res.notas);
+    if (res.ultimo !== undefined) marcaCambios = Number(res.ultimo);
     lista = res.consultas;
   }
   guardarCache(lista);

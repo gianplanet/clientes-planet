@@ -32,11 +32,15 @@ CREATE TABLE consultas (
   estado         TEXT NOT NULL DEFAULT 'Abierto',
   creado_por     TEXT NOT NULL,
   nombre_creador TEXT NOT NULL DEFAULT '',
-  atendido_por   TEXT NOT NULL DEFAULT ''
+  atendido_por   TEXT NOT NULL DEFAULT '',
+  -- Momento del último cambio (ms). Sirve para que el portal pregunte
+  -- "¿hay algo nuevo?" leyendo una sola fila, en vez de traerse todo.
+  actualizado    INTEGER NOT NULL DEFAULT 0
 );
-CREATE INDEX idx_consultas_cliente ON consultas(cliente);
-CREATE INDEX idx_consultas_estado  ON consultas(estado);
-CREATE INDEX idx_consultas_id_desc ON consultas(id DESC);
+CREATE INDEX idx_consultas_cliente     ON consultas(cliente);
+CREATE INDEX idx_consultas_estado      ON consultas(estado);
+CREATE INDEX idx_consultas_id_desc     ON consultas(id DESC);
+CREATE INDEX idx_consultas_actualizado ON consultas(actualizado);
 
 -- ── MENSAJES ──────────────────────────────────────────────
 -- Cada respuesta dentro de una consulta es ahora una fila propia.
