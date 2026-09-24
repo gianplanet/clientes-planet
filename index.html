@@ -1180,6 +1180,7 @@ body {
                    oninput="setBusqueda(this.value)">
             <button class="search-clear" onclick="setBusqueda('')" title="Limpiar">✕</button>
           </div>
+          <div class="client-filter" id="planet-enviadas-filter"></div>
           <div id="planet-enviadas-list"></div>
         </div>
 
@@ -1320,7 +1321,8 @@ let currentUser = null;     // {usuario, nombre, team, cliente, role}
 let allConsultas = [];       // loaded from API
 let allClientes = [];        // unique client names
 let planetFilter = 'Todos';  // current client filter
-let planetEstadoFilter = 'pendiente'; // al entrar, lo que hay que atender
+let planetEstadoFilter = 'pendiente';    // al entrar, lo que hay que atender
+let planetEstadoFilterEnv = 'Todos';     // solapa elegida en la lista de Enviadas
 let busquedaPlanet = '';          // texto del buscador (Planet)
 let busquedaCliente = '';         // texto del buscador (cliente)
 let ordenNuevasPrimero = true;    // true: más recientes arriba
@@ -2828,6 +2830,8 @@ function renderPlanetData(lista) {
     ${chipOrden()}
   `;
 
+  pintarSolapasEnviadas();
+
   // Client filter chips — only show clients that have consultas
   const clientesConConsultas = [...new Set(recibidas.map(c => c.cliente))].sort();
   // Hasta 6 clientes van como botones; con más, un desplegable (si no, la pantalla se llena de botones)
@@ -2873,6 +2877,41 @@ function setPlanetFilter(f, btn) {
   entrada($('planet-consultas-list').children, 'translateY(8px)', 30);
 }
 
+// Solapas de Enviadas: los mismos estados que en Consultas, pero con el nombre
+// visto desde nuestro lado (ahí la conversación empieza al revés).
+const NOMBRES_ENVIADAS = {
+  pendiente: 'Te respondieron',
+  proceso: 'En proceso',
+  espera: 'Esperando al cliente',
+  cerrado: 'Cerradas',
+};
+function pintarSolapasEnviadas() {
+  const cont = $('planet-enviadas-filter');
+  if (!cont) return;
+  const enviadas = allConsultas.filter(c => c.direccion === 'planet_a_cliente');
+  const cuenta = g => enviadas.filter(c => grupoPlanet(c.estado) === g).length;
+  const chip = (g, icono) => {
+    const act = planetEstadoFilterEnv === g;
+    return `<button class="client-chip ${act ? 'active' : ''}" onclick="setPlanetEstadoFilterEnv('${g}')" style="${act ? '' : 'border-color:' + GRUPOS[g].color + ';color:' + GRUPOS[g].color + ';'}">${icono} ${NOMBRES_ENVIADAS[g]} <span class="cnt">${cuenta(g)}</span></button>`;
+  };
+  cont.innerHTML = `
+    ${chip('pendiente','⏳')}
+    ${chip('proceso','🔄')}
+    ${chip('espera','💬')}
+    ${chip('cerrado','✓')}
+    <button class="client-chip ${planetEstadoFilterEnv === 'Todos' ? 'active' : ''}" onclick="setPlanetEstadoFilterEnv('Todos')">Todas <span class="cnt">${enviadas.length}</span></button>
+    ${chipOrden()}
+  `;
+}
+
+function setPlanetEstadoFilterEnv(f) {
+  planetEstadoFilterEnv = f;
+  reiniciarPagina('planet-enviadas-list');
+  pintarSolapasEnviadas();
+  renderPlanetEnviadas(allConsultas.filter(c => c.direccion === 'planet_a_cliente'));
+  entrada($('planet-enviadas-list').children, 'translateY(8px)', 30);
+}
+
 function setPlanetEstadoFilter(f, btn) {
   planetEstadoFilter = f;
   reiniciarPagina('planet-consultas-list');
@@ -2912,8 +2951,10 @@ function renderPlanetConsultas(consultas) {
 
 function renderPlanetEnviadas(consultas) {
   if (busquedaPlanet) consultas = consultas.filter(c => coincide(c, busquedaPlanet));
+  if (planetEstadoFilterEnv !== 'Todos') consultas = consultas.filter(c => grupoPlanet(c.estado) === planetEstadoFilterEnv);
   if (consultas.length === 0) {
-    $('planet-enviadas-list').innerHTML = '<div class="empty-state"><p>No hay consultas enviadas</p></div>';
+    const conFiltro = busquedaPlanet || planetEstadoFilterEnv !== 'Todos';
+    $('planet-enviadas-list').innerHTML = `<div class="empty-state"><p>No hay consultas enviadas${conFiltro ? ' con ese filtro' : ''}</p></div>`;
     return;
   }
   _repintar['planet-enviadas-list'] = () => renderPlanetEnviadas(consultas);
