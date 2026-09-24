@@ -249,6 +249,11 @@ body {
 .tag-cerrada { background: var(--success-bg); color: var(--success-text); }
 
 .alert-banner.alert-ok { background: var(--success-bg); color: var(--success-text); border: 1px solid var(--success); }
+.alert-cerrar {
+  margin-left: auto; width: 24px; height: 24px; border-radius: 50%; border: none; padding: 0;
+  background: transparent; color: inherit; cursor: pointer; opacity: 0.7; flex-shrink: 0;
+}
+.alert-cerrar:hover { opacity: 1; background: rgba(0,0,0,0.08); }
 .consulta-card.recien-cerrada { border-left: 3px solid var(--success); }
 
 /* ── MÉTRICAS ── */
@@ -2096,7 +2101,8 @@ function renderClientData(lista) {
     (cerradasRecien > 0 ? `
       <div class="alert-banner alert-ok">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/></svg>
-        <span>Planet resolvió <strong>${cerradasRecien} consulta${cerradasRecien > 1 ? 's' : ''}</strong> en las últimas ${HORAS_CIERRE_RECIENTE} h</span>
+        <span>Planet resolvió <strong>${cerradasRecien} consulta${cerradasRecien > 1 ? 's' : ''}</strong></span>
+        <button class="alert-cerrar" onclick="marcarTodosLosCierresVistos()" title="Entendido">✕</button>
       </div>` : '');
   $('client-planet-alert').innerHTML = esperanPlanet > 0 ? alertEsperan(`Planet te hizo <strong>${esperanPlanet} consulta${esperanPlanet>1?'s':''}</strong> que espera${esperanPlanet>1?'n':''} tu respuesta`) : '';
 
@@ -2201,6 +2207,14 @@ function toggleCard(elId) {
   if (abrir) {
     entrada(el.querySelectorAll('.timeline-item, .thread-msg, .status-actions, .thread-reply-bar, .reply-box'), 'translateY(8px)', 45);
     alFinalDeLosMensajes(el);
+    // Si el cliente abre una consulta recién resuelta, ya la vio: sacamos el aviso
+    if (currentUser && currentUser.team === 'cliente' && elId.startsWith('card-')) {
+      const id = elId.slice(5);
+      const c = (clientConsultas || []).find(x => String(x.id) === id);
+      if (c && cerradaHacePoco(c) && marcarCierreVisto(id)) {
+        setTimeout(() => renderClientData(clientConsultas), 1200);
+      }
+    }
   }
   actualizarFab();
 }
@@ -3186,8 +3200,28 @@ function textoCierre(c) {
   const t = Date.now() - c.cerrado_en;
   return t < 60000 ? 'recién' : 'hace ' + haceCuanto(t);
 }
+// Los avisos de "resuelta" se muestran hasta que el cliente los ve: se marcan
+// como vistos al abrir la consulta o al cerrar el aviso de arriba.
+function claveCierresVistos() { return 'cierres_vistos_' + (currentUser ? currentUser.usuario : ''); }
+function cierresVistos() {
+  try { return JSON.parse(localStorage.getItem(claveCierresVistos()) || '[]'); } catch (e) { return []; }
+}
+function marcarCierreVisto(id) {
+  const vistos = cierresVistos();
+  if (vistos.includes(String(id))) return false;
+  vistos.push(String(id));
+  // Nos quedamos con los últimos 200, no hace falta más
+  try { localStorage.setItem(claveCierresVistos(), JSON.stringify(vistos.slice(-200))); } catch (e) {}
+  return true;
+}
+function marcarTodosLosCierresVistos() {
+  (clientConsultas || []).filter(cerradaHacePoco).forEach(c => marcarCierreVisto(c.id));
+  renderClientData(clientConsultas);
+}
+
 function cerradaHacePoco(c) {
   if (c.estado !== 'Cerrado' || !c.cerrado_en || c.cierre_aprox) return false;
+  if (cierresVistos().includes(String(c.id))) return false;   // ya lo vio
   return Date.now() - c.cerrado_en <= HORAS_CIERRE_RECIENTE * 3600000;
 }
 
