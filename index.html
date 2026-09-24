@@ -238,6 +238,19 @@ body {
 .msgs-scroll.hay-mas { border-bottom: 1px dashed var(--card-border); }
 @media (max-width: 760px) { .msgs-scroll { max-height: 55vh; } }
 
+/* ── AVISOS DE TIEMPO Y DE CIERRE ── */
+.tag-tiempo {
+  font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 10px;
+  white-space: nowrap; letter-spacing: 0.02em;
+}
+.tag-tiempo.demora { background: var(--warning-bg); color: var(--warning-text); }
+.tag-tiempo.urgente { background: var(--danger-bg); color: var(--danger-text); }
+.tag-tiempo.espera { background: var(--wait-bg); color: var(--wait-text); }
+.tag-cerrada { background: var(--success-bg); color: var(--success-text); }
+
+.alert-banner.alert-ok { background: var(--success-bg); color: var(--success-text); border: 1px solid var(--success); }
+.consulta-card.recien-cerrada { border-left: 3px solid var(--success); }
+
 /* ── MÉTRICAS ── */
 .met-controles { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 18px; }
 .met-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 22px; }
@@ -2051,6 +2064,7 @@ async function loadClientData(prefetched) {
 }
 
 function renderClientData(lista) {
+  avisarCierres(lista);
   const primeraVez = !datosMostrados;
   datosMostrados = true;
   const consultas = normEstados(lista);
@@ -2076,7 +2090,14 @@ function renderClientData(lista) {
   const esperanPlanet = cuenta(dePlanet, 'espera');
   setBadge('client-planet-badge', esperanPlanet);
 
-  $('client-mis-alert').innerHTML = esperanMis > 0 ? alertEsperan(`Planet necesita info tuya en <strong>${esperanMis} consulta${esperanMis>1?'s':''}</strong>`) : '';
+  const cerradasRecien = mis.filter(cerradaHacePoco).length;
+  $('client-mis-alert').innerHTML =
+    (esperanMis > 0 ? alertEsperan(`Planet necesita info tuya en <strong>${esperanMis} consulta${esperanMis>1?'s':''}</strong>`) : '') +
+    (cerradasRecien > 0 ? `
+      <div class="alert-banner alert-ok">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/></svg>
+        <span>Planet resolvió <strong>${cerradasRecien} consulta${cerradasRecien > 1 ? 's' : ''}</strong> en las últimas ${HORAS_CIERRE_RECIENTE} h</span>
+      </div>` : '');
   $('client-planet-alert').innerHTML = esperanPlanet > 0 ? alertEsperan(`Planet te hizo <strong>${esperanPlanet} consulta${esperanPlanet>1?'s':''}</strong> que espera${esperanPlanet>1?'n':''} tu respuesta`) : '';
 
   renderClientList(mis, 'client-mis-list', false, 'No tenés consultas todavía');
@@ -2521,10 +2542,11 @@ function renderClientConsultaCard(c, dimmed, isPlanetQuery) {
     </div>` : '';
 
   return `
-    <div class="consulta-card${grupo === 'espera' ? ' needs-reply' : ''}${openClass('card-' + c.id)}" style="${borderStyle}${dimStyle}" id="card-${c.id}">
+    <div class="consulta-card${grupo === 'espera' ? ' needs-reply' : ''}${cerradaHacePoco(c) ? ' recien-cerrada' : ''}${openClass('card-' + c.id)}" style="${borderStyle}${dimStyle}" id="card-${c.id}">
       <div class="consulta-header card-summary" onclick="toggleCard('card-${c.id}')">
         <div class="card-top">
           ${badgeEstado(grupo, true)}
+          ${cerradaHacePoco(c) ? `<span class="tag-tiempo tag-cerrada">✓ Resuelta ${textoCierre(c)}</span>` : ''}
           <span class="card-date">${esc(fmtFecha(c.fecha))}</span>
           ${botonCopiar(refDeAsunto(c.asunto), 'Copiar el tracking / referencia')}
           ${CHEVRON}
@@ -2745,6 +2767,12 @@ function renderPlanetData(lista) {
   ponerContador($('sb-consultas'), pendientes + enProceso);
   ponerContador($('sb-enviadas'), cuenta(enviadas, 'pendiente'));
 
+  // Aviso de consultas demoradas (las que esperan al cliente no cuentan)
+  const demoradas = recibidas.filter(c => {
+    const g = grupoPlanet(c.estado);
+    return g !== 'cerrado' && g !== 'espera' && (Date.now() - altaEnMs(c)) >= HORAS_URGENTE * 3600000;
+  });
+
   // Alert
   if (pendientes > 0) {
     $('planet-alert').innerHTML = `
@@ -2754,6 +2782,13 @@ function renderPlanetData(lista) {
       </div>`;
   } else {
     $('planet-alert').innerHTML = '';
+  }
+  if (demoradas.length) {
+    $('planet-alert').innerHTML += `
+      <div class="alert-banner alert-warning">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+        <span><strong>${demoradas.length} consulta${demoradas.length > 1 ? 's llevan' : ' lleva'} más de ${HORAS_URGENTE} h</strong> sin resolver</span>
+      </div>`;
   }
 
   // Estado filter chips (Todos al final)
@@ -2958,6 +2993,7 @@ function renderTicketCard(c, isPlanetQuery) {
             ${badgeEstado(grupo, false)}
             <span class="card-date">${esc(fmtFecha(c.fecha))}</span>
             ${c.estado === 'Respuesta cliente' ? '<span class="tag-respondio">💬 Respondió el cliente</span>' : ''}
+            ${tagTiempo(c, grupo)}
             <span class="ticket-client-tag tag-${esc(c.cliente)}">${esc(c.cliente)}</span>
             ${botonCopiar(refDeAsunto(c.asunto), 'Copiar el tracking / referencia')}
             ${CHEVRON}
@@ -3101,6 +3137,58 @@ function planetNav(btn, id) {
   if (id === 'planet-usuarios') { loadUsers(); preloadClients(); }
   if (id === 'planet-clientes') loadClients();
   if (id === 'planet-metricas') cargarMetricas();
+}
+
+// Si mientras el cliente tiene el portal abierto le cierran una consulta,
+// se lo avisamos en el momento
+let _estadosVistos = {};
+function avisarCierres(lista) {
+  const nuevos = {};
+  (lista || []).forEach(c => { nuevos[c.id] = c.estado; });
+  Object.keys(nuevos).forEach(id => {
+    if (_estadosVistos[id] && _estadosVistos[id] !== 'Cerrado' && nuevos[id] === 'Cerrado') {
+      const c = lista.find(x => String(x.id) === String(id));
+      toast('✓ Planet resolvió tu consulta: ' + refDeAsunto(c ? c.asunto : ''));
+    }
+  });
+  _estadosVistos = nuevos;
+}
+
+// ── AVISOS POR TIEMPO ──
+// Una consulta que lleva mucho abierta se marca en la tarjeta. El reloj corre
+// en horas corridas, igual que en las métricas.
+const HORAS_DEMORA = 24;    // amarillo
+const HORAS_URGENTE = 48;   // rojo
+
+function altaEnMs(c) {
+  return c.creado_en || fechaMs(c.fecha);
+}
+// "hace 3 d", "hace 5 h"
+function haceCuanto(ms) { return fmtDuracion(ms); }
+
+// Etiqueta de demora para la vista de Planet
+function tagTiempo(c, grupo) {
+  if (grupo === 'cerrado') return '';
+  const edad = Date.now() - altaEnMs(c);
+  if (grupo === 'espera') {
+    return edad >= HORAS_URGENTE * 3600000
+      ? `<span class="tag-tiempo espera">⏳ ${haceCuanto(edad)} esperando al cliente</span>` : '';
+  }
+  if (edad >= HORAS_URGENTE * 3600000) return `<span class="tag-tiempo urgente">⏰ ${haceCuanto(edad)} sin resolver</span>`;
+  if (edad >= HORAS_DEMORA * 3600000) return `<span class="tag-tiempo demora">⏰ ${haceCuanto(edad)} abierta</span>`;
+  return '';
+}
+
+// ¿Se cerró hace poco? (para avisarle al cliente). Las de cierre estimado no cuentan.
+const HORAS_CIERRE_RECIENTE = 48;
+// "recién" si fue hace menos de un minuto; si no, "hace 3 h"
+function textoCierre(c) {
+  const t = Date.now() - c.cerrado_en;
+  return t < 60000 ? 'recién' : 'hace ' + haceCuanto(t);
+}
+function cerradaHacePoco(c) {
+  if (c.estado !== 'Cerrado' || !c.cerrado_en || c.cierre_aprox) return false;
+  return Date.now() - c.cerrado_en <= HORAS_CIERRE_RECIENTE * 3600000;
 }
 
 // ═══ MÉTRICAS ═══

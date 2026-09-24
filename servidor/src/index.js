@@ -196,6 +196,7 @@ async function listarConsultas(db, me, p) {
     tipo: c.tipo || tipoDeAsunto(c.asunto),
     creado_en: c.creado_en || msDeFechaAR(c.fecha),
     cerrado_en: c.cerrado_en || null,
+    cierre_aprox: c.cierre_aprox ? 1 : 0,
     mensajes: porConsulta.get(c.id) || [],
   }));
 }
