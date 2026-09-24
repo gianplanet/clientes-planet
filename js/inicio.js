@@ -1,0 +1,3 @@
+// ═══ ARRANQUE ═══
+llenarTiposDeProblema();
+entrarConSesionGuardada();

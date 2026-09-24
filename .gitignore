@@ -11,3 +11,8 @@ servidor/node_modules/
 # Manuales de Cloudflare para el asistente (se instalan con "skills add", no son parte del portal)
 .agents/
 skills-lock.json
+
+# Herramientas y resultados de las pruebas (se instalan con "npm install")
+node_modules/
+test-results/
+playwright-report/
