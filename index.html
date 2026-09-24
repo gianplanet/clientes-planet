@@ -2344,17 +2344,26 @@ function coincide(c, q) {
 }
 
 // Fecha de la última actividad: el último mensaje, o la fecha de creación
+// Cualquier fecha anterior al 2000 es un dato roto (típico: quedó en cero y
+// se interpreta como 1970). En ese caso devolvemos 0 y no la usamos.
+const MS_2000 = Date.UTC(2000, 0, 1);
+function fechaValida(ms) { return typeof ms === 'number' && isFinite(ms) && ms > MS_2000; }
 function fechaMs(f) {
-  const s = String(f || '');
-  const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:[ ,]+(\d{1,2}):(\d{2}))?/);
-  if (m) return new Date(+m[3], +m[2] - 1, +m[1], +(m[4] || 0), +(m[5] || 0)).getTime();
-  const d = new Date(s);
-  return isNaN(d) ? 0 : d.getTime();
+  if (typeof f === 'number') return fechaValida(f) ? f : 0;
+  const s = String(f == null ? '' : f).trim();
+  if (!s) return 0;
+  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ ,T]+(\d{1,2}):(\d{2}))?/);
+  if (m) {
+    const ms = new Date(+m[3], +m[2] - 1, +m[1], +(m[4] || 0), +(m[5] || 0)).getTime();
+    return fechaValida(ms) ? ms : 0;
+  }
+  const ms = new Date(s).getTime();
+  return fechaValida(ms) ? ms : 0;
 }
 function ultimaActividad(c) {
   const msgs = c.mensajes || [];
-  const fechas = [fechaMs(c.fecha)].concat(msgs.map(m => fechaMs(m.fecha)));
-  return Math.max.apply(null, fechas.concat([0]));
+  const fechas = [altaEnMs(c)].concat(msgs.map(m => fechaMs(m.fecha))).filter(fechaValida);
+  return fechas.length ? Math.max.apply(null, fechas) : 0;
 }
 // Ordena por última actividad; a igualdad, por número de consulta
 function ordenar(lista) {
@@ -3175,7 +3184,12 @@ const HORAS_DEMORA = 24;    // amarillo
 const HORAS_URGENTE = 48;   // rojo
 
 function altaEnMs(c) {
-  return c.creado_en || fechaMs(c.fecha);
+  const guardada = fechaMs(Number(c.creado_en));
+  if (guardada) return guardada;
+  const escrita = fechaMs(c.fecha);
+  if (escrita) return escrita;
+  const primero = (c.mensajes || [])[0];
+  return primero ? fechaMs(primero.fecha) : 0;   // 0 = no sabemos cuándo entró
 }
 // "hace 3 d", "hace 5 h"
 function haceCuanto(ms) { return fmtDuracion(ms); }
@@ -3183,7 +3197,9 @@ function haceCuanto(ms) { return fmtDuracion(ms); }
 // Etiqueta de demora para la vista de Planet
 function tagTiempo(c, grupo) {
   if (grupo === 'cerrado') return '';
-  const edad = Date.now() - altaEnMs(c);
+  const alta = altaEnMs(c);
+  if (!alta) return '';          // sin fecha de alta no inventamos una antigüedad
+  const edad = Date.now() - alta;
   if (grupo === 'espera') {
     return edad >= HORAS_URGENTE * 3600000
       ? `<span class="tag-tiempo espera">⏳ ${haceCuanto(edad)} esperando al cliente</span>` : '';
@@ -3220,7 +3236,7 @@ function marcarTodosLosCierresVistos() {
 }
 
 function cerradaHacePoco(c) {
-  if (c.estado !== 'Cerrado' || !c.cerrado_en || c.cierre_aprox) return false;
+  if (c.estado !== 'Cerrado' || !fechaValida(Number(c.cerrado_en)) || c.cierre_aprox) return false;
   if (cierresVistos().includes(String(c.id))) return false;   // ya lo vio
   return Date.now() - c.cerrado_en <= HORAS_CIERRE_RECIENTE * 3600000;
 }

@@ -54,11 +54,19 @@ function ahoraAR(soloFecha = false) {
 
 // Pasa "23/09/2026 14:05" (hora de Argentina) a milisegundos.
 // Lo usamos para medir tiempos sin depender del texto.
+const MS_2000 = Date.UTC(2000, 0, 1);   // cualquier fecha anterior es un dato roto
 function msDeFechaAR(texto) {
-  const m = String(texto || '').match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
-  if (!m) return 0;
+  const s = String(texto == null ? '' : texto).trim();
+  if (!s) return 0;
+  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ ,T]+(\d{1,2}):(\d{2}))?/);
   // Argentina es UTC-3 todo el año
-  return Date.UTC(+m[3], +m[2] - 1, +m[1], +(m[4] || 0) + 3, +(m[5] || 0));
+  if (m) {
+    const ms = Date.UTC(+m[3], +m[2] - 1, +m[1], +(m[4] || 0) + 3, +(m[5] || 0));
+    return ms > MS_2000 ? ms : 0;
+  }
+  const d = new Date(s);                 // por si quedó guardada en formato ISO
+  const ms = d.getTime();
+  return isFinite(ms) && ms > MS_2000 ? ms : 0;
 }
 
 // El tipo de problema es la última parte del asunto: "152089 · NUME · No entregado"
@@ -233,7 +241,7 @@ async function listarNotas(db, me) {
 // Agrega las columnas nuevas, crea la tabla de eventos y completa lo que se
 // puede de las consultas que ya existían. Corre sola la primera vez y queda
 // marcada como hecha. Volver a correrla no rompe nada: todo es "si no existe".
-const MARCA_METRICAS = 'migracion_metricas_v1';
+const MARCA_METRICAS = 'migracion_metricas_v2';
 let metricasListas = false;   // por isolate, para no leer KV en cada pedido
 
 async function prepararMetricas(env) {
@@ -280,25 +288,30 @@ async function prepararMetricas(env) {
   await db.prepare('CREATE INDEX IF NOT EXISTS idx_eventos_consulta ON eventos(consulta_id, cuando)').run();
   await db.prepare('CREATE INDEX IF NOT EXISTS idx_eventos_cuando ON eventos(cuando)').run();
 
-  // Completar lo que se pueda de las consultas viejas (solo columnas nuevas)
+  // Completar lo que se pueda de las consultas viejas (solo columnas nuevas).
+  // Incluye arreglar las fechas de alta que hayan quedado en cero: si la fecha
+  // escrita no se puede leer, usamos la del primer mensaje.
   const { results: viejas } = await db.prepare(
-    'SELECT id, fecha, asunto, estado, actualizado, tipo, creado_en FROM consultas'
+    `SELECT c.id, c.fecha, c.asunto, c.estado, c.actualizado, c.tipo, c.creado_en,
+            (SELECT m.fecha FROM mensajes m WHERE m.consulta_id = c.id ORDER BY m.id LIMIT 1) AS primer_msg
+     FROM consultas c`
   ).all();
   const arreglos = [];
   for (const c of viejas) {
     // De las cerradas viejas no sabemos el momento exacto del cierre: usamos el
     // último cambio como aproximación y lo dejamos marcado como aproximado.
     const cerrado = c.estado === 'Cerrado' ? (c.actualizado || null) : null;
+    const alta = (c.creado_en > MS_2000 ? c.creado_en : 0) || msDeFechaAR(c.fecha) || msDeFechaAR(c.primer_msg);
     arreglos.push(
       db.prepare('UPDATE consultas SET tipo = ?, creado_en = ?, cerrado_en = ?, cierre_aprox = ? WHERE id = ?')
-        .bind(c.tipo || tipoDeAsunto(c.asunto), c.creado_en || msDeFechaAR(c.fecha), cerrado, cerrado ? 1 : 0, c.id)
+        .bind(c.tipo || tipoDeAsunto(c.asunto), alta, cerrado, cerrado ? 1 : 0, c.id)
     );
   }
 
   const { results: msgs } = await db.prepare(
     `SELECT m.id, m.fecha, COALESCE(u.team, '') AS team
      FROM mensajes m LEFT JOIN usuarios u ON u.usuario = m.autor
-     WHERE m.creado_en = 0 OR m.equipo = ''`
+     WHERE m.creado_en < ${MS_2000} OR m.equipo = ''`
   ).all();
   for (const m of msgs) {
     arreglos.push(
@@ -311,7 +324,8 @@ async function prepararMetricas(env) {
 
   if (env.IMAGENES) await env.IMAGENES.put(MARCA_METRICAS, String(Date.now()));
   metricasListas = true;
-  return { agregadas, consultas: viejas.length, mensajes: msgs.length };
+  const sinFecha = viejas.filter((c) => !((c.creado_en > MS_2000) || msDeFechaAR(c.fecha) || msDeFechaAR(c.primer_msg))).length;
+  return { agregadas, consultas: viejas.length, mensajes: msgs.length, sinFechaDeAlta: sinFecha };
 }
 
 async function manejar(action, p, env, origen) {
