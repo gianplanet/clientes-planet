@@ -3390,6 +3390,7 @@ function pintarMetricas(m) {
       Se muestra la <strong>mediana</strong> (el caso del medio), que no se deforma con un caso extremo; el promedio va abajo.
       “Resuelta” es una consulta cerrada.
       ${m.resolucion.aproximadas ? `<br>${m.resolucion.aproximadas} consultas cerradas antes de que empezáramos a medir tienen fecha de cierre estimada y no entran en el tiempo de resolución.` : ''}
+      ${m.excluidas ? `<br>${m.excluidas} consultas quedaron fuera de estos números: son las que se cerraron en la limpieza del 24/09 y no representan trabajo del día. Se siguen viendo en las listas.` : ''}
     </p>`;
 }
 

@@ -241,7 +241,13 @@ async function listarNotas(db, me) {
 // Agrega las columnas nuevas, crea la tabla de eventos y completa lo que se
 // puede de las consultas que ya existían. Corre sola la primera vez y queda
 // marcada como hecha. Volver a correrla no rompe nada: todo es "si no existe".
-const MARCA_METRICAS = 'migracion_metricas_v2';
+const MARCA_METRICAS = 'migracion_metricas_v3';
+
+// Limpieza del 24/09/2026: ese día se cerraron de golpe muchas consultas viejas
+// que venían arrastradas. Esas no representan trabajo del día, así que quedan
+// fuera de las métricas (siguen visibles en las listas como siempre).
+const LIMPIEZA_DESDE = Date.UTC(2026, 8, 24, 3, 0, 0);   // 24/09 00:00 hora de Argentina
+const LIMPIEZA_HASTA = Date.UTC(2026, 8, 25, 3, 0, 0);   // 25/09 00:00 hora de Argentina
 let metricasListas = false;   // por isolate, para no leer KV en cada pedido
 
 async function prepararMetricas(env) {
@@ -263,6 +269,7 @@ async function prepararMetricas(env) {
     ['consultas', 'creado_en', 'INTEGER NOT NULL DEFAULT 0'],
     ['consultas', 'cerrado_en', 'INTEGER'],
     ['consultas', 'cierre_aprox', 'INTEGER NOT NULL DEFAULT 0'],
+    ['consultas', 'excluir_metricas', 'INTEGER NOT NULL DEFAULT 0'],
     ['mensajes', 'creado_en', 'INTEGER NOT NULL DEFAULT 0'],
     ['mensajes', 'equipo', "TEXT NOT NULL DEFAULT ''"],
   ]) {
@@ -322,10 +329,15 @@ async function prepararMetricas(env) {
 
   for (let k = 0; k < arreglos.length; k += 50) await db.batch(arreglos.slice(k, k + 50));
 
+  // Dejar fuera de las métricas lo que se cerró en la limpieza del 24/09
+  const limpieza = await db.prepare(
+    'UPDATE consultas SET excluir_metricas = 1 WHERE cerrado_en >= ? AND cerrado_en < ?'
+  ).bind(LIMPIEZA_DESDE, LIMPIEZA_HASTA).run();
+
   if (env.IMAGENES) await env.IMAGENES.put(MARCA_METRICAS, String(Date.now()));
   metricasListas = true;
   const sinFecha = viejas.filter((c) => !((c.creado_en > MS_2000) || msDeFechaAR(c.fecha) || msDeFechaAR(c.primer_msg))).length;
-  return { agregadas, consultas: viejas.length, mensajes: msgs.length, sinFechaDeAlta: sinFecha };
+  return { agregadas, consultas: viejas.length, mensajes: msgs.length, sinFechaDeAlta: sinFecha, excluidasDeLaLimpieza: limpieza.meta.changes };
 }
 
 async function manejar(action, p, env, origen) {
@@ -399,11 +411,12 @@ async function manejar(action, p, env, origen) {
       // Solo las consultas que nos hacen los clientes (las que enviamos nosotros
       // se miden distinto y no entran acá)
       const sql = `SELECT id, cliente, tipo, asunto, estado, creado_en, cerrado_en, cierre_aprox
-                   FROM consultas WHERE direccion = 'cliente_a_planet'${cliente ? ' AND cliente = ?' : ''}`;
+                   FROM consultas
+                   WHERE direccion = 'cliente_a_planet' AND excluir_metricas = 0${cliente ? ' AND cliente = ?' : ''}`;
       const { results: todas } = await (cliente ? db.prepare(sql).bind(cliente) : db.prepare(sql)).all();
       const sqlMsgs = `SELECT m.consulta_id, m.creado_en, m.equipo
          FROM mensajes m JOIN consultas c ON c.id = m.consulta_id
-         WHERE c.direccion = 'cliente_a_planet'${cliente ? ' AND c.cliente = ?' : ''}
+         WHERE c.direccion = 'cliente_a_planet' AND c.excluir_metricas = 0${cliente ? ' AND c.cliente = ?' : ''}
          ORDER BY m.consulta_id, m.creado_en, m.id`;
       const { results: msgs } = await (cliente ? db.prepare(sqlMsgs).bind(cliente) : db.prepare(sqlMsgs)).all();
 
@@ -506,6 +519,9 @@ async function manejar(action, p, env, origen) {
         .sort((a, b) => b.nuevas - a.nuevas);
 
       const antiguedades = abiertas.map((c) => ahora - (c.creado_en || ahora));
+      const sqlExcl = `SELECT COUNT(*) AS n FROM consultas
+         WHERE excluir_metricas = 1 AND direccion = 'cliente_a_planet'${cliente ? ' AND cliente = ?' : ''}`;
+      const excl = await (cliente ? db.prepare(sqlExcl).bind(cliente) : db.prepare(sqlExcl)).first();
 
       return ok({
         dias,
@@ -521,6 +537,7 @@ async function manejar(action, p, env, origen) {
         abiertas: { cantidad: abiertas.length, antiguedadPromedio: promedio(antiguedades), antiguedadMaxima: antiguedades.length ? Math.max(...antiguedades) : null, masDe48h: antiguedades.filter((t) => t > 48 * 3600000).length },
         tipos,
         clientes,
+        excluidas: (excl && excl.n) || 0,
       });
     }
 
