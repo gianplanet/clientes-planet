@@ -14,7 +14,7 @@ const PBKDF2_ITERACIONES = 100000;
 
 const ADMIN_ONLY = ['usuarios', 'crear_usuario', 'editar_usuario', 'eliminar_usuario',
                     'crear_cliente', 'editar_cliente', 'eliminar_cliente', 'init'];
-const PLANET_ONLY = ['cambiar_estado', 'clientes', 'notas', 'nota_guardar', 'nota_borrar'];
+const PLANET_ONLY = ['cambiar_estado', 'clientes', 'notas', 'nota_guardar', 'nota_borrar', 'metricas'];
 
 // ── RESPUESTAS ─────────────────────────────────────────────
 const CORS = {
@@ -371,6 +371,113 @@ async function manejar(action, p, env, origen) {
     // con sus 225 mensajes. Recién si la marca cambió, el portal pide todo.
     case 'novedades':
       return ok({ ultimo: await ultimoCambio(db, me) });
+
+
+    // ── MÉTRICAS ──
+    // Todos los tiempos son en HORAS CORRIDAS (reloj de pared), como se acordó:
+    // si una consulta entra un sábado a las 20, el reloj corre desde ese momento.
+    case 'metricas': {
+      const dias = Math.max(0, Number(p.dias) || 0);          // 0 = desde siempre
+      const desde = dias ? Date.now() - dias * 86400000 : 0;
+      const cliente = p.cliente && p.cliente !== 'Todos' ? p.cliente : null;
+
+      // Solo las consultas que nos hacen los clientes (las que enviamos nosotros
+      // se miden distinto y no entran acá)
+      const sql = `SELECT id, cliente, tipo, asunto, estado, creado_en, cerrado_en, cierre_aprox
+                   FROM consultas WHERE direccion = 'cliente_a_planet'${cliente ? ' AND cliente = ?' : ''}`;
+      const { results: todas } = await (cliente ? db.prepare(sql).bind(cliente) : db.prepare(sql)).all();
+      const sqlMsgs = `SELECT m.consulta_id, m.creado_en, m.equipo
+         FROM mensajes m JOIN consultas c ON c.id = m.consulta_id
+         WHERE c.direccion = 'cliente_a_planet'${cliente ? ' AND c.cliente = ?' : ''}
+         ORDER BY m.consulta_id, m.creado_en, m.id`;
+      const { results: msgs } = await (cliente ? db.prepare(sqlMsgs).bind(cliente) : db.prepare(sqlMsgs)).all();
+
+      const porConsulta = new Map();
+      for (const m of msgs) {
+        if (!porConsulta.has(m.consulta_id)) porConsulta.set(m.consulta_id, []);
+        porConsulta.get(m.consulta_id).push(m);
+      }
+
+      const promedio = (a) => (a.length ? Math.round(a.reduce((x, y) => x + y, 0) / a.length) : null);
+      const mediana = (a) => {
+        if (!a.length) return null;
+        const o = a.slice().sort((x, y) => x - y);
+        const m = Math.floor(o.length / 2);
+        return Math.round(o.length % 2 ? o[m] : (o[m - 1] + o[m]) / 2);
+      };
+
+      const nuevas = todas.filter((c) => (c.creado_en || 0) >= desde);
+      const resueltas = todas.filter((c) => c.cerrado_en && c.cerrado_en >= desde);
+      const abiertas = todas.filter((c) => c.estado !== 'Cerrado');
+      const ahora = Date.now();
+
+      // Tiempo de resolución: solo de las que tienen cierre exacto
+      const exactas = resueltas.filter((c) => !c.cierre_aprox && c.creado_en);
+      const tiemposRes = exactas.map((c) => c.cerrado_en - c.creado_en).filter((t) => t >= 0);
+
+      // Primera respuesta nuestra y respuesta del cliente
+      const primeras = [];
+      const delCliente = [];
+      let sinResponder = 0;
+      for (const c of nuevas) {
+        const lista = porConsulta.get(c.id) || [];
+        const nuestra = lista.find((m) => m.equipo === 'planet' && m.creado_en >= (c.creado_en || 0));
+        if (nuestra) primeras.push(nuestra.creado_en - (c.creado_en || nuestra.creado_en));
+        else if (c.estado !== 'Cerrado') sinResponder++;
+      }
+      for (const [, lista] of porConsulta) {
+        for (let i = 1; i < lista.length; i++) {
+          // Nosotros escribimos y después contestó el cliente
+          if (lista[i - 1].equipo === 'planet' && lista[i].equipo === 'cliente' && lista[i].creado_en >= desde) {
+            const t = lista[i].creado_en - lista[i - 1].creado_en;
+            if (t >= 0) delCliente.push(t);
+          }
+        }
+      }
+
+      // Tipos de consulta más frecuentes
+      const cuentaTipos = new Map();
+      for (const c of nuevas) {
+        const t = (c.tipo || 'Sin tipo').trim() || 'Sin tipo';
+        cuentaTipos.set(t, (cuentaTipos.get(t) || 0) + 1);
+      }
+      const tipos = [...cuentaTipos.entries()]
+        .map(([tipo, cantidad]) => ({ tipo, cantidad }))
+        .sort((a, b) => b.cantidad - a.cantidad);
+
+      // Resumen por cliente
+      const porCliente = new Map();
+      for (const c of nuevas) {
+        const r = porCliente.get(c.cliente) || { cliente: c.cliente, nuevas: 0, resueltas: 0, tiempos: [] };
+        r.nuevas++;
+        porCliente.set(c.cliente, r);
+      }
+      for (const c of resueltas) {
+        const r = porCliente.get(c.cliente) || { cliente: c.cliente, nuevas: 0, resueltas: 0, tiempos: [] };
+        r.resueltas++;
+        if (!c.cierre_aprox && c.creado_en) r.tiempos.push(c.cerrado_en - c.creado_en);
+        porCliente.set(c.cliente, r);
+      }
+      const clientes = [...porCliente.values()]
+        .map((r) => ({ cliente: r.cliente, nuevas: r.nuevas, resueltas: r.resueltas, resolucion: mediana(r.tiempos) }))
+        .sort((a, b) => b.nuevas - a.nuevas);
+
+      const antiguedades = abiertas.map((c) => ahora - (c.creado_en || ahora));
+
+      return ok({
+        dias,
+        cliente: cliente || 'Todos',
+        generado: ahora,
+        nuevas: nuevas.length,
+        resueltas: resueltas.length,
+        resolucion: { promedio: promedio(tiemposRes), mediana: mediana(tiemposRes), muestras: tiemposRes.length, aproximadas: resueltas.length - exactas.length },
+        primeraRespuesta: { promedio: promedio(primeras), mediana: mediana(primeras), muestras: primeras.length, sinResponder },
+        respuestaCliente: { promedio: promedio(delCliente), mediana: mediana(delCliente), muestras: delCliente.length },
+        abiertas: { cantidad: abiertas.length, antiguedadPromedio: promedio(antiguedades), antiguedadMaxima: antiguedades.length ? Math.max(...antiguedades) : null, masDe48h: antiguedades.filter((t) => t > 48 * 3600000).length },
+        tipos,
+        clientes,
+      });
+    }
 
     case 'nueva_consulta': {
       const asunto = p.asunto || '';
