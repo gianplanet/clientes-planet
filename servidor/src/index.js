@@ -418,6 +418,7 @@ async function manejar(action, p, env, origen) {
       // Primera respuesta nuestra y respuesta del cliente
       const primeras = [];
       const delCliente = [];
+      const nuestras = [];
       let sinResponder = 0;
       for (const c of nuevas) {
         const lista = porConsulta.get(c.id) || [];
@@ -427,13 +428,33 @@ async function manejar(action, p, env, origen) {
       }
       for (const [, lista] of porConsulta) {
         for (let i = 1; i < lista.length; i++) {
+          const antes = lista[i - 1], ahoraMsg = lista[i];
+          if (ahoraMsg.creado_en < desde) continue;
+          const t = ahoraMsg.creado_en - antes.creado_en;
+          if (t < 0) continue;
           // Nosotros escribimos y después contestó el cliente
-          if (lista[i - 1].equipo === 'planet' && lista[i].equipo === 'cliente' && lista[i].creado_en >= desde) {
-            const t = lista[i].creado_en - lista[i - 1].creado_en;
-            if (t >= 0) delCliente.push(t);
-          }
+          if (antes.equipo === 'planet' && ahoraMsg.equipo === 'cliente') delCliente.push(t);
+          // El cliente escribió y después contestamos nosotros
+          if (antes.equipo === 'cliente' && ahoraMsg.equipo === 'planet') nuestras.push(t);
         }
       }
+
+      // Tiempo que nos llevó a NOSOTROS cerrar la consulta: el tiempo total
+      // menos todo lo que estuvimos esperando una respuesta del cliente.
+      const esperaDelCliente = (id) => {
+        const lista = porConsulta.get(id) || [];
+        let total = 0;
+        for (let i = 1; i < lista.length; i++) {
+          if (lista[i - 1].equipo === 'planet' && lista[i].equipo === 'cliente') {
+            const t = lista[i].creado_en - lista[i - 1].creado_en;
+            if (t > 0) total += t;
+          }
+        }
+        return total;
+      };
+      const tiemposNuestros = exactas
+        .map((c) => (c.cerrado_en - c.creado_en) - esperaDelCliente(c.id))
+        .filter((t) => t >= 0);
 
       // Tipos de consulta más frecuentes
       const cuentaTipos = new Map();
@@ -448,18 +469,25 @@ async function manejar(action, p, env, origen) {
       // Resumen por cliente
       const porCliente = new Map();
       for (const c of nuevas) {
-        const r = porCliente.get(c.cliente) || { cliente: c.cliente, nuevas: 0, resueltas: 0, tiempos: [] };
+        const r = porCliente.get(c.cliente) || { cliente: c.cliente, nuevas: 0, resueltas: 0, tiempos: [], propios: [] };
         r.nuevas++;
         porCliente.set(c.cliente, r);
       }
       for (const c of resueltas) {
-        const r = porCliente.get(c.cliente) || { cliente: c.cliente, nuevas: 0, resueltas: 0, tiempos: [] };
+        const r = porCliente.get(c.cliente) || { cliente: c.cliente, nuevas: 0, resueltas: 0, tiempos: [], propios: [] };
         r.resueltas++;
-        if (!c.cierre_aprox && c.creado_en) r.tiempos.push(c.cerrado_en - c.creado_en);
+        if (!c.cierre_aprox && c.creado_en) {
+          r.tiempos.push(c.cerrado_en - c.creado_en);
+          const propio = (c.cerrado_en - c.creado_en) - esperaDelCliente(c.id);
+          if (propio >= 0) r.propios.push(propio);
+        }
         porCliente.set(c.cliente, r);
       }
       const clientes = [...porCliente.values()]
-        .map((r) => ({ cliente: r.cliente, nuevas: r.nuevas, resueltas: r.resueltas, resolucion: mediana(r.tiempos) }))
+        .map((r) => ({
+          cliente: r.cliente, nuevas: r.nuevas, resueltas: r.resueltas,
+          resolucion: mediana(r.tiempos), nuestro: mediana(r.propios || []),
+        }))
         .sort((a, b) => b.nuevas - a.nuevas);
 
       const antiguedades = abiertas.map((c) => ahora - (c.creado_en || ahora));
@@ -472,6 +500,8 @@ async function manejar(action, p, env, origen) {
         resueltas: resueltas.length,
         resolucion: { promedio: promedio(tiemposRes), mediana: mediana(tiemposRes), muestras: tiemposRes.length, aproximadas: resueltas.length - exactas.length },
         primeraRespuesta: { promedio: promedio(primeras), mediana: mediana(primeras), muestras: primeras.length, sinResponder },
+        nuestrasRespuestas: { promedio: promedio(nuestras), mediana: mediana(nuestras), muestras: nuestras.length },
+        tiempoNuestro: { promedio: promedio(tiemposNuestros), mediana: mediana(tiemposNuestros), muestras: tiemposNuestros.length },
         respuestaCliente: { promedio: promedio(delCliente), mediana: mediana(delCliente), muestras: delCliente.length },
         abiertas: { cantidad: abiertas.length, antiguedadPromedio: promedio(antiguedades), antiguedadMaxima: antiguedades.length ? Math.max(...antiguedades) : null, masDe48h: antiguedades.filter((t) => t > 48 * 3600000).length },
         tipos,

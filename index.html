@@ -3150,13 +3150,16 @@ function metSetPeriodo(d) { metPeriodo = d; cargarMetricas(); }
 
 function pintarMetricas(m) {
   const r = m.resolucion, pr = m.primeraRespuesta, rc = m.respuestaCliente, ab = m.abiertas;
+  const nr = m.nuestrasRespuestas || { muestras: 0 }, tn = m.tiempoNuestro || { muestras: 0 };
   const periodoTexto = m.dias ? `últimos ${m.dias} días` : 'todo el historial';
 
   const tiles = [
     tile('Consultas nuevas', m.nuevas, periodoTexto),
     tile('Resueltas', m.resueltas, r.aproximadas ? `${r.aproximadas} con cierre estimado` : periodoTexto),
-    tile('Tiempo de resolución', fmtDuracion(r.mediana), r.muestras ? `promedio ${fmtDuracion(r.promedio)} · ${r.muestras} consultas` : 'sin datos todavía'),
     tile('Nuestra 1ª respuesta', fmtDuracion(pr.mediana), pr.sinResponder ? `${pr.sinResponder} sin responder` : (pr.muestras ? `promedio ${fmtDuracion(pr.promedio)} · ${pr.muestras} consultas` : 'sin datos todavía'), !!pr.sinResponder),
+    tile('Nuestras respuestas', fmtDuracion(nr.mediana), nr.muestras ? `promedio ${fmtDuracion(nr.promedio)} · ${nr.muestras} respuestas` : 'sin datos todavía'),
+    tile('Tiempo nuestro hasta cerrar', fmtDuracion(tn.mediana), tn.muestras ? `sin contar la espera del cliente · ${tn.muestras} consultas` : 'sin datos todavía'),
+    tile('Resolución total', fmtDuracion(r.mediana), r.muestras ? `de punta a punta · promedio ${fmtDuracion(r.promedio)}` : 'sin datos todavía'),
     tile('Respuesta del cliente', fmtDuracion(rc.mediana), rc.muestras ? `promedio ${fmtDuracion(rc.promedio)} · ${rc.muestras} respuestas` : 'sin datos todavía'),
     tile('Abiertas ahora', ab.cantidad, ab.cantidad ? `la más vieja: ${fmtDuracion(ab.antiguedadMaxima)}${ab.masDe48h ? ` · ${ab.masDe48h} de más de 48 h` : ''}` : 'ninguna pendiente', ab.masDe48h > 0),
   ].join('');
@@ -3180,9 +3183,10 @@ function pintarMetricas(m) {
         <td>${esc(c.cliente)}</td>
         <td class="num">${c.nuevas}</td>
         <td class="num">${c.resueltas}</td>
+        <td class="num">${fmtDuracion(c.nuestro)}</td>
         <td class="num">${fmtDuracion(c.resolucion)}</td>
       </tr>`).join('')
-    : '<tr><td colspan="4" style="color:var(--text-muted)">Sin datos en este período</td></tr>';
+    : '<tr><td colspan="5" style="color:var(--text-muted)">Sin datos en este período</td></tr>';
 
   return `
     <div class="met-grid">${tiles}</div>
@@ -3195,12 +3199,14 @@ function pintarMetricas(m) {
     <div class="met-panel">
       <h4>Por cliente</h4>
       <table class="met-tabla">
-        <thead><tr><th>Cliente</th><th style="text-align:right">Nuevas</th><th style="text-align:right">Resueltas</th><th style="text-align:right">Resolución</th></tr></thead>
+        <thead><tr><th>Cliente</th><th style="text-align:right">Nuevas</th><th style="text-align:right">Resueltas</th><th style="text-align:right">Tiempo nuestro</th><th style="text-align:right">Total</th></tr></thead>
         <tbody>${filas}</tbody>
       </table>
     </div>
 
     <p class="met-nota">
+      <strong>Tiempo nuestro hasta cerrar</strong> es el total menos lo que estuvimos esperando una respuesta del cliente:
+      mide lo que tardamos nosotros. <strong>Resolución total</strong> es lo que vivió el cliente, de punta a punta.<br>
       Los tiempos son en <strong>horas corridas</strong>: el reloj corre también de noche y los fines de semana.
       Se muestra la <strong>mediana</strong> (el caso del medio), que no se deforma con un caso extremo; el promedio va abajo.
       “Resuelta” es una consulta cerrada.
