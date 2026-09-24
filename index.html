@@ -247,6 +247,9 @@ body {
 .tag-tiempo.urgente { background: var(--danger-bg); color: var(--danger-text); }
 .tag-tiempo.espera { background: var(--wait-bg); color: var(--wait-text); }
 .tag-cerrada { background: var(--success-bg); color: var(--success-text); }
+.tag-reabierta { background: var(--purple-bg); color: var(--purple-text); }
+.ticket-card.reabierta, .consulta-card.reabierta { box-shadow: inset 3px 0 0 var(--purple); }
+.reabrir-nota { font-size: 12px; color: var(--text-muted); padding: 0 14px 10px; }
 
 .alert-banner.alert-ok { background: var(--success-bg); color: var(--success-text); border: 1px solid var(--success); }
 .alert-cerrar {
@@ -2541,7 +2544,7 @@ function tarjetasDe(containerId) {
 function renderClientConsultaCard(c, dimmed, isPlanetQuery) {
   const msgs = c.mensajes || [];
   const grupo = grupoCliente(c.estado);
-  const canReply = grupo !== 'cerrado';
+  const canReply = true;   // en una cerrada, escribir la vuelve a abrir
   const borderStyle = (isPlanetQuery && grupo !== 'espera') ? 'border-left: 3px solid var(--purple);' : '';
   const dimStyle = dimmed ? 'opacity:0.7;' : '';
 
@@ -2557,20 +2560,22 @@ function renderClientConsultaCard(c, dimmed, isPlanetQuery) {
   });
 
   const replyHtml = canReply ? `
+    ${grupo === 'cerrado' ? '<div class="reabrir-nota">Esta consulta está cerrada. Si escribís, se vuelve a abrir y la vemos de nuevo.</div>' : ''}
     <div class="img-previews reply-previews" id="prev-c${c.id}">${previasHtml('c' + c.id)}</div>
     <div class="reply-box">
       <button type="button" class="attach-btn" onclick="elegirImagenes('c${c.id}')" title="Adjuntar fotos">${CLIP_ICON}</button>
-      <input type="text" placeholder="${grupo === 'espera' ? 'Escribí la info que pide Planet...' : 'Responder...'}" id="reply-${c.id}" onkeydown="if(event.key==='Enter')clientReply(${c.id}, this.nextElementSibling)">
+      <input type="text" placeholder="${grupo === 'cerrado' ? 'Escribí para reabrir esta consulta…' : (grupo === 'espera' ? 'Escribí la info que pide Planet...' : 'Responder...')}" id="reply-${c.id}" onkeydown="if(event.key==='Enter')clientReply(${c.id}, this.nextElementSibling)">
       <button class="reply-send" onclick="clientReply(${c.id}, this)" title="Enviar">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
       </button>
     </div>` : '';
 
   return `
-    <div class="consulta-card${grupo === 'espera' ? ' needs-reply' : ''}${cerradaHacePoco(c) ? ' recien-cerrada' : ''}${openClass('card-' + c.id)}" style="${borderStyle}${dimStyle}" id="card-${c.id}">
+    <div class="consulta-card${grupo === 'espera' ? ' needs-reply' : ''}${cerradaHacePoco(c) ? ' recien-cerrada' : ''}${fueReabierta(c) ? ' reabierta' : ''}${openClass('card-' + c.id)}" style="${borderStyle}${dimStyle}" id="card-${c.id}">
       <div class="consulta-header card-summary" onclick="toggleCard('card-${c.id}')">
         <div class="card-top">
           ${badgeEstado(grupo, true)}
+          ${tagReabierta(c)}
           ${cerradaHacePoco(c) ? `<span class="tag-tiempo tag-cerrada">✓ Resuelta ${textoCierre(c)}</span>` : ''}
           <span class="card-date">${esc(fmtFecha(c.fecha))}</span>
           ${botonCopiar(refDeAsunto(c.asunto), 'Copiar el tracking / referencia')}
@@ -2609,10 +2614,10 @@ async function clientReply(id, btn) {
   input.disabled = false;
   if (res.ok) {
     input.value = '';
-    toast('✓ Mensaje enviado');
+    toast(res.reabierta ? '🔄 Consulta reabierta' : '✓ Mensaje enviado');
     // Mismo cambio que hace el servidor: si Planet ya la estaba viendo, vuelve a Planet como pendiente
     const c = clientConsultas.find(x => String(x.id) === String(id));
-    const cambios = (c && c.estado !== 'Abierto') ? { estado: 'Respuesta cliente' } : {};
+    const cambios = res.reabierta ? { estado: 'Abierto' } : ((c && c.estado !== 'Abierto') ? { estado: 'Respuesta cliente' } : {});
     delete imgsPendientes[clave];
     aplicarLocal(clientConsultas, id, cambios, { autor: currentUser.usuario, nombre: currentUser.nombre, fecha: ahoraTexto(), texto, imagenes });
     renderClientData(clientConsultas);
@@ -2807,6 +2812,14 @@ function renderPlanetData(lista) {
       </div>`;
   } else {
     $('planet-alert').innerHTML = '';
+  }
+  const reabiertas = recibidas.filter(fueReabierta);
+  if (reabiertas.length) {
+    $('planet-alert').innerHTML += `
+      <div class="alert-banner alert-info">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+        <span><strong>${reabiertas.length} consulta${reabiertas.length > 1 ? 's' : ''} reabierta${reabiertas.length > 1 ? 's' : ''}</strong> ${reabiertas.length > 1 ? 'volvieron' : 'volvió'} a la bandeja</span>
+      </div>`;
   }
   if (demoradas.length) {
     $('planet-alert').innerHTML += `
@@ -3012,17 +3025,16 @@ function renderTicketCard(c, isPlanetQuery) {
         </div>`;
     });
     threadHtml += '</div>';   // cierra .msgs-scroll
-    // Reply bar only if not closed
-    if (grupo !== 'cerrado') {
-      threadHtml += `
-        <div class="img-previews thread-previews" id="prev-p${c.id}">${previasHtml('p' + c.id)}</div>
-        <div class="thread-reply-bar">
-          <button type="button" class="attach-btn" onclick="elegirImagenes('p${c.id}')" title="Adjuntar fotos">${CLIP_ICON}</button>
-          <input class="thread-reply-input" placeholder="Responder... (podés pegar fotos con Ctrl+V)" id="preply-${c.id}" onkeydown="if(event.key==='Enter')planetReply(${c.id}, false, this.nextElementSibling)">
-          <button class="thread-reply-btn" onclick="planetReply(${c.id}, false, this)" title="Envía el mensaje; la consulta queda En proceso">Enviar</button>
-          <button class="thread-reply-btn btn-wait" onclick="planetReply(${c.id}, true, this)" title="Envía el mensaje y pasa la consulta a Esperando info">Enviar y pedir info</button>
-        </div>`;
-    }
+    // También se puede escribir en una cerrada: ese mensaje la reabre
+    const cerrada = grupo === 'cerrado';
+    threadHtml += `
+      <div class="img-previews thread-previews" id="prev-p${c.id}">${previasHtml('p' + c.id)}</div>
+      <div class="thread-reply-bar">
+        <button type="button" class="attach-btn" onclick="elegirImagenes('p${c.id}')" title="Adjuntar fotos">${CLIP_ICON}</button>
+        <input class="thread-reply-input" placeholder="${cerrada ? 'Escribí para reabrir esta consulta…' : 'Responder... (podés pegar fotos con Ctrl+V)'}" id="preply-${c.id}" onkeydown="if(event.key==='Enter')planetReply(${c.id}, false, this.nextElementSibling)">
+        <button class="thread-reply-btn" onclick="planetReply(${c.id}, false, this)" title="${cerrada ? 'Envía el mensaje y reabre la consulta' : 'Envía el mensaje; la consulta queda En proceso'}">${cerrada ? 'Enviar y reabrir' : 'Enviar'}</button>
+        ${cerrada ? '' : `<button class="thread-reply-btn btn-wait" onclick="planetReply(${c.id}, true, this)" title="Envía el mensaje y pasa la consulta a Esperando info">Enviar y pedir info</button>`}
+      </div>`;
     threadHtml += '</div>';
   }
 
@@ -3045,11 +3057,16 @@ function renderTicketCard(c, isPlanetQuery) {
         <button class="status-btn btn-proceso" onclick="changeStatus(${c.id},'En proceso',this)">Retomar → En proceso</button>
         <button class="status-btn btn-cerrar" onclick="changeStatus(${c.id},'Cerrado',this)">Cerrar</button>
       </div>`;
+  } else if (grupo === 'cerrado') {
+    actionsHtml = `
+      <div class="status-actions">
+        <button class="status-btn btn-proceso" onclick="changeStatus(${c.id},'En proceso',this)">Reabrir</button>
+      </div>`;
   }
 
   const cardId = 'tcard-' + c.id;
   return `
-    <div class="ticket-card${openClass(cardId)}" id="${cardId}">
+    <div class="ticket-card${fueReabierta(c) ? ' reabierta' : ''}${openClass(cardId)}" id="${cardId}">
       <div class="ticket-stripe ${stripeClass}"></div>
       <div class="ticket-body">
         <div class="card-summary" onclick="toggleCard('${cardId}')">
@@ -3057,6 +3074,7 @@ function renderTicketCard(c, isPlanetQuery) {
             ${badgeEstado(grupo, false)}
             <span class="card-date">${esc(fmtFecha(c.fecha))}</span>
             ${c.estado === 'Respuesta cliente' ? '<span class="tag-respondio">💬 Respondió el cliente</span>' : ''}
+            ${tagReabierta(c)}
             ${tagTiempo(c, grupo)}
             <span class="ticket-client-tag tag-${esc(c.cliente)}">${esc(c.cliente)}</span>
             ${botonCopiar(refDeAsunto(c.asunto), 'Copiar el tracking / referencia')}
@@ -3248,6 +3266,19 @@ function tagTiempo(c, grupo) {
   if (edad >= HORAS_URGENTE * 3600000) return `<span class="tag-tiempo urgente">⏰ ${haceCuanto(edad)} sin resolver</span>`;
   if (edad >= HORAS_DEMORA * 3600000) return `<span class="tag-tiempo demora">⏰ ${haceCuanto(edad)} abierta</span>`;
   return '';
+}
+
+// Una consulta que estaba cerrada y volvió a abrirse. Se marca mientras siga
+// abierta, para que no pase desapercibida.
+function fueReabierta(c) {
+  return !!c.reabierta_en && c.estado !== 'Cerrado';
+}
+function tagReabierta(c) {
+  if (!fueReabierta(c)) return '';
+  const cuando = fechaMs(Number(c.reabierta_en));
+  const t = cuando ? Date.now() - cuando : 0;
+  const hace = !cuando ? '' : (t < 60000 ? ' recién' : ' hace ' + haceCuanto(t));
+  return `<span class="tag-tiempo tag-reabierta">🔄 Reabierta${hace}</span>`;
 }
 
 // ¿Se cerró hace poco? (para avisarle al cliente). Las de cierre estimado no cuentan.

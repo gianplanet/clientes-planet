@@ -205,6 +205,8 @@ async function listarConsultas(db, me, p) {
     creado_en: c.creado_en || msDeFechaAR(c.fecha),
     cerrado_en: c.cerrado_en || null,
     cierre_aprox: c.cierre_aprox ? 1 : 0,
+    reabierta_en: c.reabierta_en || null,
+    reaberturas: c.reaberturas || 0,
     mensajes: porConsulta.get(c.id) || [],
   }));
 }
@@ -241,7 +243,7 @@ async function listarNotas(db, me) {
 // Agrega las columnas nuevas, crea la tabla de eventos y completa lo que se
 // puede de las consultas que ya existían. Corre sola la primera vez y queda
 // marcada como hecha. Volver a correrla no rompe nada: todo es "si no existe".
-const MARCA_METRICAS = 'migracion_metricas_v3';
+const MARCA_METRICAS = 'migracion_metricas_v4';
 
 // Limpieza del 24/09/2026: ese día se cerraron de golpe muchas consultas viejas
 // que venían arrastradas. Esas no representan trabajo del día, así que quedan
@@ -270,6 +272,8 @@ async function prepararMetricas(env) {
     ['consultas', 'cerrado_en', 'INTEGER'],
     ['consultas', 'cierre_aprox', 'INTEGER NOT NULL DEFAULT 0'],
     ['consultas', 'excluir_metricas', 'INTEGER NOT NULL DEFAULT 0'],
+    ['consultas', 'reabierta_en', 'INTEGER'],
+    ['consultas', 'reaberturas', 'INTEGER NOT NULL DEFAULT 0'],
     ['mensajes', 'creado_en', 'INTEGER NOT NULL DEFAULT 0'],
     ['mensajes', 'equipo', "TEXT NOT NULL DEFAULT ''"],
   ]) {
@@ -578,7 +582,9 @@ async function manejar(action, p, env, origen) {
       if (!c) return err('Consulta no encontrada');
       // Un cliente solo responde consultas de su empresa
       if (!esPlanet(me) && c.cliente !== me.cliente) return err('Consulta no encontrada');
-      if (c.estado === 'Cerrado') return err('La consulta está cerrada');
+      // Antes no se podía escribir en una consulta cerrada. Ahora sí: el mensaje
+      // la vuelve a abrir, así no hay que crear otra consulta por el mismo tema.
+      const reabre = c.estado === 'Cerrado';
 
       const fecha = ahoraAR();
       const ahora = Date.now();
@@ -595,7 +601,16 @@ async function manejar(action, p, env, origen) {
       //  - Planet responde sin pedir info     → En proceso
       //  - El cliente responde                → Respuesta cliente (salvo que nadie la haya tomado)
       let nuevoEstado = null;
-      if (esPlanet(me)) {
+      if (reabre) {
+        // Si la reabre el cliente queda Pendiente para nosotros; si la reabrimos
+        // nosotros, queda En proceso. En los dos casos deja de estar cerrada.
+        nuevoEstado = esPlanet(me) ? 'En proceso' : 'Abierto';
+        ops.push(
+          db.prepare('UPDATE consultas SET cerrado_en = NULL, reabierta_en = ?, reaberturas = reaberturas + 1 WHERE id = ?')
+            .bind(ahora, id),
+          anotarEvento(db, { consultaId: id, evento: 'reabierta', de: 'Cerrado', a: nuevoEstado, me })
+        );
+      } else if (esPlanet(me)) {
         if (String(p.esperar_info) === '1') nuevoEstado = 'Esperando info';
         else if (['Abierto', 'Respuesta cliente', 'Respondido'].includes(c.estado)) nuevoEstado = 'En proceso';
         if (nuevoEstado && !c.atendido_por) {
@@ -610,7 +625,7 @@ async function manejar(action, p, env, origen) {
       }
 
       await db.batch(ops);
-      return ok({});
+      return ok({ reabierta: reabre });
     }
 
     case 'cambiar_estado': {
@@ -620,6 +635,7 @@ async function manejar(action, p, env, origen) {
       if (!antes) return err('Consulta no encontrada');
 
       const ahora = Date.now();
+      const reabre = antes.estado === 'Cerrado' && estado !== 'Cerrado';
       // Al cerrar se guarda el momento exacto (es lo que mide el tiempo de resolución).
       // Si se reabre, se borra para no dejar un cierre falso.
       const cierre = estado === 'Cerrado' ? ahora : null;
@@ -631,7 +647,10 @@ async function manejar(action, p, env, origen) {
               .bind(estado, ahora, cierre, id),
       ];
       if (estado !== antes.estado) {
-        ops.push(anotarEvento(db, { consultaId: id, evento: 'estado', de: antes.estado, a: estado, me }));
+        ops.push(anotarEvento(db, { consultaId: id, evento: reabre ? 'reabierta' : 'estado', de: antes.estado, a: estado, me }));
+      }
+      if (reabre) {
+        ops.push(db.prepare('UPDATE consultas SET reabierta_en = ?, reaberturas = reaberturas + 1 WHERE id = ?').bind(ahora, id));
       }
       await db.batch(ops);
       return ok({});
