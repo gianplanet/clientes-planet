@@ -7,7 +7,7 @@ const H = 3600000;
 
 describe('métricas', () => {
   it('calcula tiempos en horas corridas, separando la espera del cliente', async () => {
-    const { nume, planet } = await escenario();
+    const { nume, planet, admin } = await escenario();
     const { id } = await consulta(nume);
     // Armamos una historia con horas conocidas:
     // alta 0 h · Planet contesta 2 h · cliente contesta 10 h · cierre 12 h
@@ -27,7 +27,7 @@ describe('métricas', () => {
     // Las que enviamos nosotros no se miden acá
     await consulta(planet, { cliente: 'GETBOX', direccion: 'planet_a_cliente' });
 
-    const m = await planet({ action: 'metricas', dias: 30 });
+    const m = await admin({ action: 'metricas', dias: 30 });
     expect(m).toMatchObject({
       ok: true, dias: 30, cliente: 'Todos',
       nuevas: 2, resueltas: 1, excluidas: 1,
@@ -44,19 +44,19 @@ describe('métricas', () => {
   });
 
   it('las de cierre estimado no entran en el tiempo de resolución', async () => {
-    const { nume, planet } = await escenario();
+    const { nume, admin } = await escenario();
     const { id } = await consulta(nume);
     await db.prepare(`UPDATE consultas SET estado = 'Cerrado', cerrado_en = ?, cierre_aprox = 1 WHERE id = ?`).bind(Date.now(), id).run();
-    const m = await planet({ action: 'metricas', dias: 0 });
+    const m = await admin({ action: 'metricas', dias: 0 });
     expect(m.resueltas).toBe(1);
     expect(m.resolucion).toMatchObject({ muestras: 0, mediana: null, aproximadas: 1 });
   });
 
   it('filtra por cliente', async () => {
-    const { nume, getbox, planet } = await escenario();
+    const { nume, getbox, admin } = await escenario();
     await consulta(nume);
     await consulta(getbox, { asunto: 'X · GETBOX · Otro' });
-    const m = await planet({ action: 'metricas', cliente: 'GETBOX' });
+    const m = await admin({ action: 'metricas', cliente: 'GETBOX' });
     expect(m.nuevas).toBe(1);
     expect(m.tipos).toEqual([{ tipo: 'No entregado', cantidad: 1 }]);
   });

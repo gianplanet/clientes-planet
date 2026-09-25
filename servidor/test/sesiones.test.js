@@ -87,8 +87,8 @@ describe('sesión', () => {
 });
 
 describe('permisos por rol', () => {
-  const soloPlanet = ['cambiar_estado', 'metricas', 'clientes', 'notas', 'nota_guardar', 'nota_borrar'];
-  const soloAdmin = ['usuarios', 'crear_usuario', 'editar_usuario', 'eliminar_usuario', 'crear_cliente', 'editar_cliente', 'eliminar_cliente'];
+  const soloPlanet = ['cambiar_estado', 'clientes', 'notas', 'nota_guardar', 'nota_borrar'];
+  const soloAdmin = ['metricas', 'usuarios', 'crear_usuario', 'editar_usuario', 'eliminar_usuario', 'crear_cliente', 'editar_cliente', 'eliminar_cliente'];
 
   it('un cliente no puede usar acciones de Planet ni de admin', async () => {
     const { nume } = await escenario();
@@ -103,7 +103,6 @@ describe('permisos por rol', () => {
       expect((await planet({ action })).error, action).toBe('No tenés permiso para esta acción');
     }
     expect((await planet({ action: 'clientes' })).ok).toBe(true);
-    expect((await planet({ action: 'metricas' })).ok).toBe(true);
   });
 
   it('un cambio de rol aplica al instante, sin volver a entrar', async () => {

@@ -406,11 +406,14 @@ test('Planet: métricas, post-its y administración', async ({ browser }) => {
   expect(planet.errores).toEqual([]);
 });
 
-test('Planet común no ve la administración', async ({ browser }) => {
+test('Planet común no ve la administración ni las métricas', async ({ browser }) => {
   const planet = await ventana(browser);
   await entrar(planet, 'beto.planet');
   await expect(planet.locator('#admin-btn')).toBeHidden();
   await expect(planet.locator('#admin-clientes-btn')).toBeHidden();
+  // Las métricas son para el jefe, no para quien atiende
+  await expect(planet.locator('#metricas-btn')).toBeHidden();
+  expect((await apiDe(planet, { action: 'metricas' })).error).toBe('No tenés permiso para esta acción');
 });
 
 test('celular: el cliente ve la barra de abajo y la guía la primera vez', async ({ browser }) => {

@@ -47,12 +47,12 @@ const ACCIONES = {
   subir_imagen: { acceso: 'usuario', fn: ({ env, p, ctx }) => subirImagen(env, p, ctx.origen) },
 
   cambiar_estado: { acceso: 'planet', fn: ({ db, me, p }) => cambiarEstado(db, me, p) },
-  metricas: { acceso: 'planet', fn: ({ db, p }) => metricas(db, p) },
   clientes: { acceso: 'planet', fn: ({ db }) => listarClientes(db) },
   notas: { acceso: 'planet', fn: async ({ db, me }) => ok({ notas: await listarNotas(db, me) }) },
   nota_guardar: { acceso: 'planet', fn: ({ db, me, p }) => guardarNota(db, me, p) },
   nota_borrar: { acceso: 'planet', fn: ({ db, me, p }) => borrarNota(db, me, p) },
 
+  metricas: { acceso: 'admin', fn: ({ db, p }) => metricas(db, p) },
   usuarios: { acceso: 'admin', fn: ({ db }) => listarUsuarios(db) },
   crear_usuario: { acceso: 'admin', fn: ({ db, p }) => crearUsuario(db, p) },
   editar_usuario: { acceso: 'admin', fn: ({ db, me, p }) => editarUsuario(db, me, p) },

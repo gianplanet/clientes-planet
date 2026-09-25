@@ -14,7 +14,8 @@ function abrirVistaPlanet() {
   $('planet-role').textContent = 'Planet · ' + (sesion.role === 'admin' ? 'Admin' : 'Usuario');
   $('planet-avatar').textContent = (sesion.nombre || '?')[0];
   $('planet-avatar').style.background = avatarColor(sesion.nombre);
-  ['admin-sep', 'admin-clientes-btn', 'admin-btn'].forEach(id => { $(id).hidden = sesion.role !== 'admin'; });
+  // Métricas, Clientes y Usuarios son cosa de admins
+  ['admin-sep', 'metricas-btn', 'admin-clientes-btn', 'admin-btn'].forEach(id => { $(id).hidden = sesion.role !== 'admin'; });
   mostrarPantalla('screen-planet');
   acomodarIndicadores();
   if (!notasData.length) setNotas(local.leer(claveNotas()) || []);
