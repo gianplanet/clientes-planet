@@ -181,10 +181,8 @@ function tarjetaPlanet(c) {
   const grupo = grupoPlanet(c.estado);
   const cerrada = grupo === 'cerrado';
   const cardId = 'tcard-' + c.id;
+  // Las que preguntamos nosotros se marcan; las del cliente son lo habitual
   const nuestra = c.direccion === 'planet_a_cliente';
-  const direccion = nuestra
-    ? '<span class="ticket-direction-tag dir-outgoing">→ Enviada</span>'
-    : '<span class="ticket-direction-tag dir-incoming">← Recibida</span>';
 
   const mensajes = c.mensajes.map(m => {
     const quien = m.nombre || m.autor || '?';
@@ -236,7 +234,6 @@ function tarjetaPlanet(c) {
         <div class="ticket-details">
           <div class="ticket-footer" style="margin-bottom:6px;">
             <span class="ticket-tracking">#${c.id}</span>
-            ${direccion}
             <span class="ticket-who">${c.nombre_creador ? 'Crea: ' + esc(c.nombre_creador) : ''}${c.atendido_por ? ' · Atiende: ' + esc(c.atendido_por) : ''}</span>
           </div>
           <div class="ticket-thread"><div class="msgs-scroll" id="msgs-p${c.id}">${mensajes}</div>${respuesta}</div>
