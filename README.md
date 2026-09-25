@@ -3,7 +3,9 @@
 Portal donde los clientes le hacen consultas a Planet sobre sus envíos, y Planet
 las atiende, les pide información y las cierra.
 
-- **Portal** (lo que se ve): `index.html` + `css/` + `js/`, publicado con GitHub Pages.
+- **Portal** (lo que se ve): `index.html` + `css/` + `js/`, publicado con GitHub Pages en
+  **https://atencionalcliente.planetlog.com.ar** (registro CNAME en la zona DNS de planetlog.com.ar,
+  en el cPanel de Nuthost, apuntando a `gianplanet.github.io`; el archivo `CNAME` le dice a GitHub la dirección).
 - **Servidor**: `servidor/`, en Cloudflare Workers, con la base de datos en D1 y las fotos en KV.
 
 ## Cómo está organizado
