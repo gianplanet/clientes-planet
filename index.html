@@ -6,7 +6,7 @@
 <title>Planet · Portal de Clientes</title>
 <link rel="icon" type="image/png" href="logo.png">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap">
-<link rel="stylesheet" href="css/portal.css?v=4">
+<link rel="stylesheet" href="css/portal.css?v=5">
 </head>
 <body>
 
@@ -152,10 +152,6 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/></svg>
           Consultas <span class="sidebar-badge" id="sb-consultas">0</span>
         </button>
-        <button class="sidebar-item" data-seccion="planet-enviadas" onclick="irA('planet-enviadas')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-          Enviadas <span class="sidebar-badge purple-badge" id="sb-enviadas">0</span>
-        </button>
         <button class="sidebar-item" data-seccion="planet-metricas" onclick="irA('planet-metricas')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg>
           Métricas
@@ -177,7 +173,7 @@
       </nav>
 
       <div class="main-content">
-        <!-- Planet sub: Consultas recibidas -->
+        <!-- Planet sub: Consultas (las que nos hacen y las que hacemos) -->
         <div class="planet-sub active" id="planet-consultas">
           <div id="planet-alert"></div>
           <div class="stats-row" id="planet-stats"></div>
@@ -204,19 +200,6 @@
             </button>
           </div>
           <div id="met-contenido"><div class="spinner"></div></div>
-        </div>
-
-        <!-- Planet sub: Enviadas -->
-        <div class="planet-sub" id="planet-enviadas">
-          <div class="search-row" id="planet-search-row-env">
-            <svg class="search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-            <input class="search-input" id="planet-search-env" type="search" autocomplete="off"
-                   placeholder="Buscar por tracking, dirección, cliente o texto…"
-                   oninput="buscarPlanet(this.value)">
-            <button class="search-clear" onclick="buscarPlanet('')" title="Limpiar">✕</button>
-          </div>
-          <div class="client-filter" id="planet-enviadas-filter"></div>
-          <div id="planet-enviadas-list"></div>
         </div>
 
         <!-- Planet sub: Clientes (solo admin) -->
@@ -345,18 +328,18 @@
 </svg>
 
 <!-- El orden importa: cada archivo usa lo de los anteriores -->
-<script src="js/base.js?v=4"></script>
-<script src="js/api.js?v=4"></script>
-<script src="js/animaciones.js?v=4"></script>
-<script src="js/sesion.js?v=4"></script>
-<script src="js/imagenes.js?v=4"></script>
-<script src="js/consultas.js?v=4"></script>
-<script src="js/cliente.js?v=4"></script>
-<script src="js/planet.js?v=4"></script>
-<script src="js/metricas.js?v=4"></script>
-<script src="js/notas.js?v=4"></script>
-<script src="js/guia.js?v=4"></script>
-<script src="js/admin.js?v=4"></script>
-<script src="js/inicio.js?v=4"></script>
+<script src="js/base.js?v=5"></script>
+<script src="js/api.js?v=5"></script>
+<script src="js/animaciones.js?v=5"></script>
+<script src="js/sesion.js?v=5"></script>
+<script src="js/imagenes.js?v=5"></script>
+<script src="js/consultas.js?v=5"></script>
+<script src="js/cliente.js?v=5"></script>
+<script src="js/planet.js?v=5"></script>
+<script src="js/metricas.js?v=5"></script>
+<script src="js/notas.js?v=5"></script>
+<script src="js/guia.js?v=5"></script>
+<script src="js/admin.js?v=5"></script>
+<script src="js/inicio.js?v=5"></script>
 </body>
 </html>

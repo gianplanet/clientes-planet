@@ -88,7 +88,7 @@ function mostrarErrorDeCarga(error) {
 async function cargarTodo() {
   const planet = esPlanet();
   if (!datosMostrados) {
-    if (planet) { $('planet-consultas-list').innerHTML = esqueletoHtml(4); $('planet-enviadas-list').innerHTML = esqueletoHtml(3); }
+    if (planet) $('planet-consultas-list').innerHTML = esqueletoHtml(4);
     else $('client-list').innerHTML = esqueletoHtml(4);
   }
   const boton = planet ? 'planet-reload' : 'client-reload';

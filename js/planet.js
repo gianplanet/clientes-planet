@@ -1,14 +1,13 @@
 // ═══ VISTA DE PLANET ═══
-// Consultas recibidas (de los clientes), Enviadas (las que hacemos nosotros),
-// Métricas, Nueva consulta y, para admins, Clientes y Usuarios.
+// Una sola lista de consultas (las que nos hacen los clientes y las que les
+// hacemos nosotros), Métricas, Nueva consulta y, para admins, Clientes y Usuarios.
 
 let filtroCliente = 'Todos';          // cliente elegido en Consultas
 let filtroEstado = 'pendiente';       // al entrar, lo que hay que atender
-let filtroEstadoEnviadas = 'Todos';
 let busquedaPlanet = '';
 
+// Las que nos hacen los clientes: las métricas miden solo esas
 const recibidas = () => consultas.filter(c => c.direccion === 'cliente_a_planet');
-const enviadas = () => consultas.filter(c => c.direccion === 'planet_a_cliente');
 
 function abrirVistaPlanet() {
   $('planet-name').textContent = sesion.nombre;
@@ -26,31 +25,24 @@ function abrirVistaPlanet() {
 function pintarPlanet() {
   const primeraVez = !datosMostrados;
   datosMostrados = true;
-  const rec = recibidas(), env = enviadas();
 
   actualizarClientesNuevaConsulta();
 
-  // Resumen de las recibidas
-  const cuenta = (lista, g) => lista.filter(c => grupoPlanet(c.estado) === g).length;
-  const pendientes = cuenta(rec, 'pendiente');
+  // Resumen (todas: las que nos hacen y las que les hacemos)
+  const cuenta = g => consultas.filter(c => grupoPlanet(c.estado) === g).length;
+  const pendientes = cuenta('pendiente');
   $('planet-stats').innerHTML = ORDEN_GRUPOS.map(g => `
-    <div class="stat-card"><div class="stat-number" style="color:${GRUPOS[g].color}">${cuenta(rec, g)}</div><div class="stat-label">${g === 'pendiente' ? 'Pendientes' : g === 'cerrado' ? 'Cerradas' : GRUPOS[g].label}</div></div>`).join('');
+    <div class="stat-card"><div class="stat-number" style="color:${GRUPOS[g].color}">${cuenta(g)}</div><div class="stat-label">${g === 'pendiente' ? 'Pendientes' : g === 'cerrado' ? 'Cerradas' : GRUPOS[g].label}</div></div>`).join('');
   rodarNumeros('planet-stats');
 
-  // Globitos del menú: lo que requiere atención de Planet
-  ponerContador($('sb-consultas'), pendientes + cuenta(rec, 'proceso'));
-  ponerContador($('sb-enviadas'), cuenta(env, 'pendiente'));
+  // Globito del menú: lo que requiere atención de Planet
+  ponerContador($('sb-consultas'), pendientes + cuenta('proceso'));
 
-  $('planet-alert').innerHTML = avisosPlanet(rec, pendientes);
-  pintarFiltrosConsultas(rec);
-  pintarSolapasEnviadas();
-  pintarConsultasRecibidas();
-  pintarEnviadas();
+  $('planet-alert').innerHTML = avisosPlanet(consultas, pendientes);
+  pintarFiltrosPlanet();
+  pintarListaPlanet();
 
-  if (primeraVez) {
-    entrada($('planet-consultas-list').children);
-    entrada($('planet-enviadas-list').children);
-  }
+  if (primeraVez) entrada($('planet-consultas-list').children);
   marcarNovedades(consultas, 'tcard-');
 }
 
@@ -81,8 +73,8 @@ function avisosPlanet(rec, pendientes) {
   return html;
 }
 
-// ── FILTROS DE CONSULTAS RECIBIDAS ──
-function pintarFiltrosConsultas(rec) {
+// ── FILTROS ──
+function pintarFiltrosPlanet() {
   const chip = (g, icono) => {
     const act = filtroEstado === g;
     return `<button class="client-chip ${act ? 'active' : ''}" onclick="elegirEstado(${jsArg(g)})" style="${estiloSolapa(g, act)}">${icono} ${GRUPOS[g].label}</button>`;
@@ -92,12 +84,12 @@ function pintarFiltrosConsultas(rec) {
     `<button class="client-chip ${filtroEstado === 'Todos' ? 'active' : ''}" onclick="elegirEstado('Todos')">Todos</button>` + chipOrden();
 
   // Hasta 6 clientes van como botones; con más, un desplegable
-  const nombres = [...new Set(rec.map(c => c.cliente))].sort();
+  const nombres = [...new Set(consultas.map(c => c.cliente))].sort();
   if (nombres.length > 6) {
-    const cuenta = n => rec.filter(c => c.cliente === n).length;
+    const cuenta = n => consultas.filter(c => c.cliente === n).length;
     $('planet-filter').innerHTML = `
       <select class="cliente-select" onchange="elegirCliente(this.value)">
-        <option value="Todos"${filtroCliente === 'Todos' ? ' selected' : ''}>Todos los clientes (${rec.length})</option>
+        <option value="Todos"${filtroCliente === 'Todos' ? ' selected' : ''}>Todos los clientes (${consultas.length})</option>
         ${nombres.map(n => `<option value="${esc(n)}"${filtroCliente === n ? ' selected' : ''}>${esc(n)} (${cuenta(n)})</option>`).join('')}
       </select>`;
   } else {
@@ -108,57 +100,32 @@ function pintarFiltrosConsultas(rec) {
 
 function elegirCliente(nombre) {
   filtroCliente = nombre;
-  reiniciarPagina('planet-consultas-list');
-  pintarFiltrosConsultas(recibidas());
-  pintarConsultasRecibidas();
-  entrada($('planet-consultas-list').children, 'translateY(8px)', 30);
+  cambiarFiltro();
 }
 function elegirEstado(g) {
   filtroEstado = g;
+  cambiarFiltro();
+}
+function cambiarFiltro() {
   reiniciarPagina('planet-consultas-list');
-  pintarFiltrosConsultas(recibidas());
-  pintarConsultasRecibidas();
+  pintarFiltrosPlanet();
+  pintarListaPlanet();
   entrada($('planet-consultas-list').children, 'translateY(8px)', 30);
 }
 
-// Solapas de Enviadas: los mismos estados, con el nombre visto desde nuestro
-// lado (ahí la conversación empieza al revés).
-const NOMBRES_ENVIADAS = { pendiente: 'Te respondieron', proceso: 'En proceso', espera: 'Esperando al cliente', cerrado: 'Cerradas' };
-function pintarSolapasEnviadas() {
-  const env = enviadas();
-  const cuenta = g => env.filter(c => grupoPlanet(c.estado) === g).length;
-  const chip = (g, icono) => {
-    const act = filtroEstadoEnviadas === g;
-    return `<button class="client-chip ${act ? 'active' : ''}" onclick="elegirEstadoEnviadas(${jsArg(g)})" style="${estiloSolapa(g, act)}">${icono} ${NOMBRES_ENVIADAS[g]} <span class="cnt">${cuenta(g)}</span></button>`;
-  };
-  $('planet-enviadas-filter').innerHTML =
-    chip('pendiente', '⏳') + chip('proceso', '🔄') + chip('espera', '💬') + chip('cerrado', '✓') +
-    `<button class="client-chip ${filtroEstadoEnviadas === 'Todos' ? 'active' : ''}" onclick="elegirEstadoEnviadas('Todos')">Todas <span class="cnt">${env.length}</span></button>` + chipOrden();
-}
-function elegirEstadoEnviadas(g) {
-  filtroEstadoEnviadas = g;
-  reiniciarPagina('planet-enviadas-list');
-  pintarSolapasEnviadas();
-  pintarEnviadas();
-  entrada($('planet-enviadas-list').children, 'translateY(8px)', 30);
-}
-
-// ── BUSCADOR (el mismo texto en Consultas y en Enviadas) ──
+// ── BUSCADOR ──
 function buscarPlanet(texto) {
   busquedaPlanet = texto;
-  ['planet-consultas-list', 'planet-enviadas-list'].forEach(reiniciarPagina);
-  ['planet-search', 'planet-search-env'].forEach(id => {
-    const el = $(id);
-    if (el.value !== texto) el.value = texto;
-    el.closest('.search-row').classList.toggle('con-texto', !!texto);
-  });
-  pintarConsultasRecibidas();
-  pintarEnviadas();
+  reiniciarPagina('planet-consultas-list');
+  const el = $('planet-search');
+  if (el.value !== texto) el.value = texto;
+  el.closest('.search-row').classList.toggle('con-texto', !!texto);
+  pintarListaPlanet();
 }
 
-// ── LISTAS ──
-function pintarConsultasRecibidas() {
-  let lista = recibidas();
+// ── LISTA ──
+function pintarListaPlanet() {
+  let lista = consultas;
   if (filtroCliente !== 'Todos') lista = lista.filter(c => c.cliente === filtroCliente);
   if (filtroEstado !== 'Todos') lista = lista.filter(c => grupoPlanet(c.estado) === filtroEstado);
   if (busquedaPlanet) lista = lista.filter(c => coincide(c, busquedaPlanet));
@@ -168,37 +135,22 @@ function pintarConsultasRecibidas() {
   info.textContent = busquedaPlanet ? `${lista.length} resultado${lista.length === 1 ? '' : 's'} para “${busquedaPlanet}”` : '';
 
   const cont = $('planet-consultas-list');
-  _repintar['planet-consultas-list'] = pintarConsultasRecibidas;
+  _repintar['planet-consultas-list'] = pintarListaPlanet;
   const verHistorial = busquedaPlanet || filtroEstado === 'cerrado' || filtroEstado === 'Todos';
   if (!lista.length) {
     const conFiltro = filtroCliente !== 'Todos' || filtroEstado !== 'Todos' || busquedaPlanet;
     cont.innerHTML = `<div class="empty-state"><p>No hay consultas${conFiltro ? ' con ese filtro' : ''}</p></div>` + (verHistorial ? botonHistorial() : '');
     return;
   }
-  cont.innerHTML = listaPorGrupos(lista, false, 'planet-consultas-list') + (verHistorial ? botonHistorial() : '');
-}
-
-function pintarEnviadas() {
-  let lista = enviadas();
-  if (busquedaPlanet) lista = lista.filter(c => coincide(c, busquedaPlanet));
-  if (filtroEstadoEnviadas !== 'Todos') lista = lista.filter(c => grupoPlanet(c.estado) === filtroEstadoEnviadas);
-  const cont = $('planet-enviadas-list');
-  _repintar['planet-enviadas-list'] = pintarEnviadas;
-  const verHistorial = busquedaPlanet || filtroEstadoEnviadas === 'cerrado' || filtroEstadoEnviadas === 'Todos';
-  if (!lista.length) {
-    const conFiltro = busquedaPlanet || filtroEstadoEnviadas !== 'Todos';
-    cont.innerHTML = `<div class="empty-state"><p>No hay consultas enviadas${conFiltro ? ' con ese filtro' : ''}</p></div>` + (verHistorial ? botonHistorial() : '');
-    return;
-  }
-  cont.innerHTML = listaPorGrupos(lista, true, 'planet-enviadas-list') + (verHistorial ? botonHistorial() : '');
+  cont.innerHTML = listaPorGrupos(lista, 'planet-consultas-list') + (verHistorial ? botonHistorial() : '');
 }
 
 // Lista agrupada: Pendientes → En proceso → Esperando info → Cerradas
-function listaPorGrupos(lista, sonEnviadas, contId) {
+function listaPorGrupos(lista, contId) {
   const titulos = {
     pendiente: 'Pendientes — requieren atención',
     proceso: 'En proceso',
-    espera: sonEnviadas ? 'Esperando respuesta del cliente' : 'Esperando info del cliente',
+    espera: 'Esperando al cliente',
     cerrado: 'Cerradas'
   };
   const tope = cuantasVisibles(contId);
@@ -229,9 +181,10 @@ function tarjetaPlanet(c) {
   const grupo = grupoPlanet(c.estado);
   const cerrada = grupo === 'cerrado';
   const cardId = 'tcard-' + c.id;
-  const direccion = c.direccion === 'cliente_a_planet'
-    ? '<span class="ticket-direction-tag dir-incoming">← Recibida</span>'
-    : '<span class="ticket-direction-tag dir-outgoing">→ Enviada</span>';
+  const nuestra = c.direccion === 'planet_a_cliente';
+  const direccion = nuestra
+    ? '<span class="ticket-direction-tag dir-outgoing">→ Enviada</span>'
+    : '<span class="ticket-direction-tag dir-incoming">← Recibida</span>';
 
   const mensajes = c.mensajes.map(m => {
     const quien = m.nombre || m.autor || '?';
@@ -269,6 +222,7 @@ function tarjetaPlanet(c) {
         <div class="card-summary" onclick="toggleCard('${cardId}')">
           <div class="card-top">
             ${badgeEstado(grupo, false)}
+            ${nuestra ? '<span class="ticket-direction-tag dir-outgoing">→ Nuestra consulta</span>' : ''}
             <span class="card-date">${esc(fmtFecha(c.fecha))}</span>
             ${c.estado === 'Respuesta cliente' ? '<span class="tag-respondio">💬 Respondió el cliente</span>' : ''}
             ${tagReabierta(c)}
@@ -398,7 +352,11 @@ async function enviarNuevaConsultaPlanet() {
   ['pnq-cliente', 'pnq-ref', 'pnq-tipo', 'pnq-mensaje'].forEach(id => { $(id).value = ''; });
   olvidarImagenes('pnq');
   toast('✓ Consulta #' + res.id + ' enviada', { desc: cliente + ' la va a ver en su portal.' });
-  irA('planet-enviadas');
+  // Queda en la misma lista, esperando al cliente: la mostramos ahí
+  filtroEstado = 'espera';
+  filtroCliente = 'Todos';
+  irA('planet-consultas');
+  cambiarFiltro();
   refrescar();
 }
 

@@ -186,7 +186,7 @@ test('la actualización automática no borra lo que Planet está escribiendo', a
   await expect(t.locator('.thread-reply-input')).toHaveValue('Respuesta a medio escribir');
 });
 
-test('nueva consulta de Planet: el cliente elegido no cambia solo y queda en Enviadas', async ({ browser }) => {
+test('nueva consulta de Planet: el cliente elegido no cambia solo y queda esperando al cliente', async ({ browser }) => {
   const cliente = await ventana(browser);
   const planet = await ventana(browser);
   await entrar(cliente, 'gabi.getbox');
@@ -206,10 +206,16 @@ test('nueva consulta de Planet: el cliente elegido no cambia solo y queda en Env
   await planet.selectOption('#pnq-tipo', 'Otro');
   await planet.fill('#pnq-mensaje', 'Necesitamos el DNI del receptor');
   await planet.click('#pnq-send');
-  // Muestra Enviadas y el menú marca Enviadas (antes marcaba Consultas)
-  await expect(planet.locator('#planet-enviadas')).toHaveClass(/active/);
-  await expect(planet.locator('.sidebar-item.active')).toHaveAttribute('data-seccion', 'planet-enviadas');
-  await expect(tarjetaPlanet(planet, r)).toBeVisible();
+  // Queda en la misma lista de consultas, en "Esperando info"
+  await expect(planet.locator('#planet-consultas')).toHaveClass(/active/);
+  await expect(planet.locator('.sidebar-item.active')).toHaveAttribute('data-seccion', 'planet-consultas');
+  const nuestra = tarjetaPlanet(planet, r);
+  await expect(nuestra).toBeVisible();
+  await expect(nuestra.locator('.ticket-status')).toHaveText('Esperando info');
+  await expect(nuestra.locator('.ticket-direction-tag').first()).toHaveText('→ Nuestra consulta');
+  // Y en "Pendientes" (lo que hay que atender) no aparece
+  await planet.click('#planet-estado-filter >> text=Pendiente');
+  await expect(tarjetaPlanet(planet, r)).toHaveCount(0);
 
   // Le llega a GETBOX, no a otro
   await revisar(cliente);
