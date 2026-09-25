@@ -203,7 +203,6 @@ function moverIndicador(barra, activo, animar) {
   anim(ind, { transform: [ind.style.transform, tr], [prop]: [ind.style[prop], tam] }, { resorte: [300, 26] });
 }
 function acomodarIndicadores() {
-  document.querySelectorAll('.subtab-bar').forEach(b => moverIndicador(b, b.querySelector('.subtab.active'), false));
   document.querySelectorAll('.sidebar').forEach(b => moverIndicador(b, b.querySelector('.sidebar-item.active'), false));
 }
 window.addEventListener('resize', acomodarIndicadores);
@@ -247,7 +246,7 @@ function ponerContador(el, n) {
 // ── Onda que sale desde el dedo al tocar un botón ──
 document.addEventListener('pointerdown', e => {
   if (SIN_MOVIMIENTO) return;
-  const b = e.target.closest('.btn-primary, .btn-send, .reply-send, .thread-reply-btn, .fab, .status-btn, .client-chip, .subtab, .icon-btn');
+  const b = e.target.closest('.btn-primary, .btn-send, .reply-send, .thread-reply-btn, .fab, .status-btn, .client-chip, .icon-btn');
   if (!b || b.disabled) return;
   const r = b.getBoundingClientRect(), tam = Math.max(r.width, r.height) * 2;
   const o = document.createElement('span');

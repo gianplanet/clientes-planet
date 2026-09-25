@@ -41,7 +41,10 @@ function recibirConsultas(lista, completa) {
     const antes = porId.get(String(c.id));
     if (antes && firma(antes) === firma(c)) return;
     // Una respuesta que salió antes de nuestro último cambio trae la consulta
-    // como estaba: no pisa lo que ya se ve actualizado en pantalla.
+    // como estaba: no pisa lo que ya se ve actualizado en pantalla. Vale para
+    // una versión más vieja que la que ya tenemos y para un cambio nuestro que
+    // el servidor todavía no confirmó (_base = la versión sobre la que se hizo).
+    if (antes && c.actualizado && antes.actualizado && c.actualizado < antes.actualizado) return;
     if (antes && antes._base !== undefined && c.actualizado <= antes._base) return;
     porId.set(String(c.id), c);
     cambio = true;
@@ -77,7 +80,7 @@ function pintar() {
 
 function mostrarErrorDeCarga(error) {
   if (datosMostrados) return toast('No se pudo actualizar: ' + (error || 'error'));
-  const listas = esPlanet() ? ['planet-consultas-list'] : ['client-mis-list'];
+  const listas = esPlanet() ? ['planet-consultas-list'] : ['client-list'];
   listas.forEach(id => { $(id).innerHTML = '<div class="empty-state"><p>Error: ' + esc(error) + '</p></div>'; });
 }
 
@@ -86,7 +89,7 @@ async function cargarTodo() {
   const planet = esPlanet();
   if (!datosMostrados) {
     if (planet) { $('planet-consultas-list').innerHTML = esqueletoHtml(4); $('planet-enviadas-list').innerHTML = esqueletoHtml(3); }
-    else { $('client-mis-list').innerHTML = esqueletoHtml(3); $('client-planet-list').innerHTML = esqueletoHtml(2); }
+    else $('client-list').innerHTML = esqueletoHtml(4);
   }
   const boton = planet ? 'planet-reload' : 'client-reload';
   const token = sesion.token;

@@ -1,6 +1,6 @@
 // ═══ VISTA DEL CLIENTE ═══
-// Dos pestañas: "Mis consultas" (las que el cliente le hace a Planet) y
-// "De Planet" (las que Planet le hace a él). Cada una con solapas por estado.
+// Una sola lista con todas sus consultas: las que él nos hace y las que le
+// hacemos nosotros (esas nacen en "Esperando tu respuesta"). Solapas por estado.
 
 let busquedaCliente = '';
 
@@ -10,7 +10,6 @@ function abrirVistaCliente() {
   $('client-avatar').textContent = (sesion.nombre || '?')[0];
   $('client-avatar').style.background = avatarColor(sesion.nombre);
   mostrarPantalla('screen-client');
-  acomodarIndicadores();
 }
 
 function pintarCliente() {
@@ -18,43 +17,33 @@ function pintarCliente() {
   const primeraVez = !datosMostrados;
   datosMostrados = true;
 
-  const mis = consultas.filter(c => c.direccion === 'cliente_a_planet');
-  const dePlanet = consultas.filter(c => c.direccion === 'planet_a_cliente');
-
-  // Resumen
-  const cuenta = (lista, g) => lista.filter(c => grupoCliente(c.estado) === g).length;
-  const esperanMis = cuenta(mis, 'espera');
-  const esperanPlanet = cuenta(dePlanet, 'espera');
+  // Resumen (todas las consultas del cliente, las suyas y las nuestras)
+  const cuenta = g => consultas.filter(c => grupoCliente(c.estado) === g).length;
   $('client-stats').innerHTML = [
     ['pendiente', 'Pendientes'], ['proceso', 'En proceso'], ['espera', 'Esperan tu respuesta'], ['cerrado', 'Cerradas']
   ].map(([g, label]) =>
-    `<div class="stat-card"><div class="stat-number" style="color:${GRUPOS[g].color}">${cuenta(mis, g)}</div><div class="stat-label">${label}</div></div>`).join('');
+    `<div class="stat-card"><div class="stat-number" style="color:${GRUPOS[g].color}">${cuenta(g)}</div><div class="stat-label">${label}</div></div>`).join('');
   rodarNumeros('client-stats');
 
-  // Globitos de las pestañas: consultas que esperan respuesta del cliente
-  ponerGlobito('client-mis-badge', esperanMis);
-  ponerGlobito('client-planet-badge', esperanPlanet);
-
+  // Avisos: se separan las que esperan info nuestra de las que le preguntamos nosotros
+  const esperan = consultas.filter(c => grupoCliente(c.estado) === 'espera');
+  const nuestras = esperan.filter(c => c.direccion === 'planet_a_cliente').length;
+  const suyas = esperan.length - nuestras;
   const plural = n => n > 1 ? 's' : '';
-  const recienCerradas = mis.filter(cerradaHacePoco).length;
-  $('client-mis-alert').innerHTML =
-    (esperanMis ? avisoEspera(`Planet necesita info tuya en <strong>${esperanMis} consulta${plural(esperanMis)}</strong>`) : '') +
+  const recienCerradas = consultas.filter(cerradaHacePoco).length;
+  $('client-alert').innerHTML =
+    (suyas ? avisoEspera(`Planet necesita info tuya en <strong>${suyas} consulta${plural(suyas)}</strong>`) : '') +
+    (nuestras ? avisoEspera(`Planet te hizo <strong>${nuestras} consulta${plural(nuestras)}</strong> que espera${nuestras > 1 ? 'n' : ''} tu respuesta`) : '') +
     (recienCerradas ? `
       <div class="alert-banner alert-ok">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/></svg>
         <span>Planet resolvió <strong>${recienCerradas} consulta${plural(recienCerradas)}</strong></span>
         <button class="alert-cerrar" onclick="marcarTodosLosCierresVistos()" title="Entendido">✕</button>
       </div>` : '');
-  $('client-planet-alert').innerHTML = esperanPlanet
-    ? avisoEspera(`Planet te hizo <strong>${esperanPlanet} consulta${plural(esperanPlanet)}</strong> que espera${esperanPlanet > 1 ? 'n' : ''} tu respuesta`) : '';
 
-  armarListaCliente(mis, 'client-mis-list', false, 'No tenés consultas todavía');
-  armarListaCliente(dePlanet, 'client-planet-list', true, 'No hay consultas de Planet');
+  armarListaCliente(consultas, 'client-list', 'No tenés consultas todavía');
 
-  if (primeraVez) {
-    entrada(tarjetasDe('client-mis-list'));
-    entrada(tarjetasDe('client-planet-list'));
-  }
+  if (primeraVez) entrada(tarjetasDe('client-list'));
   marcarNovedades(consultas, 'card-');
 
   // Primera vez que el cliente entra (en este dispositivo): guía de cómo funciona
@@ -64,15 +53,6 @@ function pintarCliente() {
           && !$('modal-new-query').classList.contains('active') && !guiaVista()) iniciarGuia();
     }, 900);
   }
-}
-
-function ponerGlobito(id, n) {
-  const b = $(id);
-  if (!b) return;
-  const antes = b.hidden ? 0 : Number(b.textContent) || 0;
-  b.textContent = n;
-  b.hidden = !(n > 0);
-  if (n > antes && datosMostrados) saltar(b);
 }
 
 function avisoEspera(texto) {
@@ -98,8 +78,8 @@ function solapaInicial(lista) {
   return ['espera', 'pendiente', 'proceso'].find(hay) || 'cerrado';
 }
 
-function armarListaCliente(lista, contId, dePlanet, vacio) {
-  _listasCliente[contId] = { lista, dePlanet };
+function armarListaCliente(lista, contId, vacio) {
+  _listasCliente[contId] = { lista };
   if (!lista.length) {
     $(contId).innerHTML = `<div class="empty-state"><p>${vacio}</p></div>${botonHistorial()}`;
     return;
@@ -119,11 +99,10 @@ function pintarListaCliente(contId) {
   const guardada = _listasCliente[contId];
   const cont = guardada && $(contId).querySelector('.estado-lista');
   if (!cont) return;
-  const { dePlanet } = guardada;
   const lista = busquedaCliente ? guardada.lista.filter(c => coincide(c, busquedaCliente)) : guardada.lista;
   const vista = clientTabEstado[contId];
   const tope = cuantasVisibles(contId);
-  const tarjetas = l => l.slice(0, tope).map(c => tarjetaCliente(c, dePlanet)).join('') + botonVerMas(contId, l.length - Math.min(tope, l.length));
+  const tarjetas = l => l.slice(0, tope).map(tarjetaCliente).join('') + botonVerMas(contId, l.length - Math.min(tope, l.length));
   _repintar[contId] = () => pintarListaCliente(contId);
 
   if (busquedaCliente) {
@@ -146,7 +125,7 @@ function pintarListaCliente(contId) {
       mostradas += parte.length;
       const de = parte.length < l.length ? ` (${parte.length} de ${l.length})` : '';
       html += `<div class="section-label" style="${html ? 'margin-top:20px;' : ''}${color ? 'color:' + color : ''}">${titulo}${de}</div>`;
-      html += parte.map(c => tarjetaCliente(c, dePlanet)).join('');
+      html += parte.map(tarjetaCliente).join('');
     };
     const de = g => ordenar(lista.filter(c => grupoCliente(c.estado) === g));
     seccion('Esperan tu respuesta', de('espera'), 'var(--wait)');
@@ -189,9 +168,11 @@ function buscarCliente(texto) {
 }
 
 // ── TARJETA ──
-function tarjetaCliente(c, dePlanet) {
+function tarjetaCliente(c) {
   const grupo = grupoCliente(c.estado);
   const cerrada = grupo === 'cerrado';
+  // Las que preguntamos nosotros van con un borde violeta, para distinguirlas
+  const dePlanet = c.direccion === 'planet_a_cliente';
   const estilo = (dePlanet && grupo !== 'espera' ? 'border-left: 3px solid var(--purple);' : '') + (cerrada ? 'opacity:0.7;' : '');
   const clases = 'consulta-card' + (grupo === 'espera' ? ' needs-reply' : '') + (cerradaHacePoco(c) ? ' recien-cerrada' : '')
     + (fueReabierta(c) ? ' reabierta' : '') + openClass('card-' + c.id);
@@ -314,25 +295,9 @@ async function enviarNuevaConsultaCliente() {
   olvidarImagenes('nq');
   cerrarNuevaConsultaCliente();
   // Que la vea enseguida: queda en la solapa Pendiente
-  if (clientTabEstado['client-mis-list'] !== 'Todos') clientTabEstado['client-mis-list'] = 'pendiente';
+  if (clientTabEstado['client-list'] !== 'Todos') clientTabEstado['client-list'] = 'pendiente';
   toast('✓ Consulta #' + res.id + ' creada', { desc: 'Planet ya la puede ver. Te avisamos acá cuando respondan.' });
   refrescar();
-}
-
-// Pestañas "Mis consultas" / "De Planet"
-function cambiarPestanaCliente(btn, id) {
-  const barra = btn.closest('.subtab-bar');
-  const tabs = Array.from(barra.querySelectorAll('.subtab'));
-  const antes = tabs.findIndex(b => b.classList.contains('active'));
-  const ahora = tabs.indexOf(btn);
-  tabs.forEach(b => b.classList.toggle('active', b === btn));
-  moverIndicador(barra, btn, true);
-  document.querySelectorAll('#screen-client .client-sub').forEach(s => s.classList.toggle('active', s.id === id));
-  acomodarIndicadores();
-  if (antes !== ahora) {
-    const dir = ahora > antes ? 1 : -1;
-    anim($(id), { opacity: [0, 1], transform: [`translateX(${24 * dir}px)`, 'none'] }, { resorte: [280, 26], mantener: false });
-  }
 }
 
 // ── AVISOS DE "RESUELTA" ──

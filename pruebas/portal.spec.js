@@ -101,15 +101,15 @@ test('circuito completo entre cliente y Planet', async ({ browser }) => {
 
   // 4. El cliente lo ve en "Esperan tu respuesta" y contesta
   await revisar(cliente);
-  await expect(cliente.locator('#client-mis-alert')).toContainText('Planet necesita info tuya');
-  await cliente.locator('#client-mis-list .client-chip[data-v="espera"]').click();
+  await expect(cliente.locator('#client-alert')).toContainText('Planet necesita info tuya');
+  await cliente.locator('#client-list .client-chip[data-v="espera"]').click();
   const tc = tarjetaCliente(cliente, r);
   await expect(tc.locator('.ticket-status')).toHaveText('Esperando tu respuesta');
   await tc.locator('.card-summary').click();
   await tc.locator('input[id^="reply-"]').fill('Calle Falsa 123');
   await tc.locator('.reply-send').click();
   // Ya no espera al cliente: pasa a "En proceso"
-  await cliente.locator('#client-mis-list .client-chip[data-v="proceso"]').click();
+  await cliente.locator('#client-list .client-chip[data-v="proceso"]').click();
   await expect(tarjetaCliente(cliente, r).locator('.timeline-item').last()).toContainText('Calle Falsa 123');
 
   // 5. Planet la ve de nuevo pendiente ("Respondió el cliente") y la cierra
@@ -123,18 +123,18 @@ test('circuito completo entre cliente y Planet', async ({ browser }) => {
 
   // 6. Al cliente le aparece el aviso de resuelta
   await revisar(cliente);
-  await expect(cliente.locator('#client-mis-alert')).toContainText('Planet resolvió');
+  await expect(cliente.locator('#client-alert')).toContainText('Planet resolvió');
   await expect(cliente.locator('#client-stats')).toBeVisible();
 
   // 7. El cliente escribe en la cerrada: se reabre
-  await cliente.locator('#client-mis-list .client-chip[data-v="cerrado"]').click();
+  await cliente.locator('#client-list .client-chip[data-v="cerrado"]').click();
   const tc2 = tarjetaCliente(cliente, r);
   await tc2.locator('.card-summary').click();
   await tc2.locator('input[id^="reply-"]').fill('Sigue sin llegar');
   await tc2.locator('.reply-send').click();
   // Cuando el servidor confirma, sale de "Cerradas" y vuelve a "Pendiente"
   await expect(tarjetaCliente(cliente, r)).toHaveCount(0);
-  await cliente.locator('#client-mis-list .client-chip[data-v="pendiente"]').click();
+  await cliente.locator('#client-list .client-chip[data-v="pendiente"]').click();
   await expect(tarjetaCliente(cliente, r).locator('.tag-reabierta')).toBeVisible();
   await revisar(planet);
   await planet.click('#planet-estado-filter >> text=Pendiente');
@@ -213,8 +213,11 @@ test('nueva consulta de Planet: el cliente elegido no cambia solo y queda en Env
 
   // Le llega a GETBOX, no a otro
   await revisar(cliente);
-  await cliente.locator('.subtab', { hasText: 'De Planet' }).click();
-  await expect(tarjetaCliente(cliente, r)).toBeVisible();
+  // Le aparece en la misma lista, esperando su respuesta
+  await cliente.locator('#client-list .client-chip[data-v="espera"]').click();
+  const suya = tarjetaCliente(cliente, r);
+  await expect(suya).toBeVisible();
+  await expect(suya.locator('.ticket-status')).toHaveText('Esperando tu respuesta');
   const deNume = await apiDe(otro, { action: 'consultas' });
   expect(deNume.consultas.some((c) => c.asunto.includes(r))).toBe(false);
 });
@@ -282,11 +285,11 @@ test('historial: las cerradas viejas se cargan a pedido', async ({ browser }) =>
   expect(cambio.status, cambio.stderr).toBe(0);
 
   await cliente.reload();
-  await cliente.locator('#client-mis-list .client-chip[data-v="cerrado"]').click();
+  await cliente.locator('#client-list .client-chip[data-v="cerrado"]').click();
   await expect(tarjetaCliente(cliente, r)).toHaveCount(0);
-  await cliente.locator('#client-mis-list .ver-historial').click();
+  await cliente.locator('#client-list .ver-historial').click();
   await expect(tarjetaCliente(cliente, r)).toBeVisible();
-  await expect(cliente.locator('#client-mis-list .ver-historial')).toHaveCount(0);
+  await expect(cliente.locator('#client-list .ver-historial')).toHaveCount(0);
 });
 
 test('fotos: adjuntar, enviar y ver', async ({ browser }) => {
@@ -436,7 +439,7 @@ test('capturas de pantalla', async ({ browser }) => {
   await planet.screenshot({ path: 'test-results/capturas/metricas.png' });
 
   await cliente.setViewportSize({ width: 390, height: 844 });
-  await cliente.locator('#client-mis-list .client-chip[data-v="Todos"]').click();
+  await cliente.locator('#client-list .client-chip[data-v="Todos"]').click();
   await cliente.locator('.consulta-card .card-summary').first().click();
   await cliente.waitForTimeout(600);
   await cliente.screenshot({ path: 'test-results/capturas/cliente-celular.png' });

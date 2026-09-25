@@ -2,13 +2,13 @@
 // Se muestra sola la primera vez que el cliente entra (en ese dispositivo). El botón "?" la repite.
 const GUIA_CLIENTE = [
   { titulo: '¡Hola! 👋', texto: 'Te mostramos en un minuto cómo funciona el Portal de Clientes de Planet.' },
-  { el: () => document.querySelector('#screen-client .subtab-bar'), titulo: 'Tus consultas y las de Planet',
-    texto: '“Mis consultas” son las que le enviás vos a Planet. “De Planet” son las que Planet te hace a vos sobre algún envío.' },
+  { el: () => $('client-stats'), titulo: 'Tus consultas',
+    texto: 'Acá están todas juntas: las que le enviás vos a Planet y las que Planet te hace a vos sobre algún envío.' },
   { el: () => $('client-stats'), titulo: 'Resumen',
     texto: 'De un vistazo: cuántas consultas tenés pendientes, en proceso, esperando tu respuesta y cerradas.' },
-  { el: () => document.querySelector('#screen-client .client-sub.active .estado-chips'), titulo: 'Solapas por estado',
+  { el: () => document.querySelector('#client-list .estado-chips'), titulo: 'Solapas por estado',
     texto: 'Tocá una solapa para ver solo esas consultas. Las cerradas quedan guardadas en la suya.' },
-  { el: () => document.querySelector('#screen-client .client-sub.active .consulta-card'), titulo: 'Abrí una consulta',
+  { el: () => document.querySelector('#client-list .consulta-card'), titulo: 'Abrí una consulta',
     texto: 'Tocala para ver la conversación y responder. Con el clip podés adjuntar fotos (o pegarlas con Ctrl + V).' },
   { el: () => document.querySelector('#screen-client .fab'), titulo: 'Consulta nueva',
     texto: 'Con este botón le mandás una consulta nueva a Planet: número de tracking, tipo de problema y tu mensaje.' },

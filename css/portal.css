@@ -498,34 +498,7 @@ body {
 }
 .reply-send:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* ── PESTAÑAS DEL CLIENTE ── */
-.subtab-bar {
-  position: relative; display: flex; gap: 0; margin-bottom: 16px; padding: 3px;
-  border-radius: 10px; border: 1.5px solid var(--card-border); background: var(--card);
-}
-.subtab {
-  flex: 1; padding: 9px 8px; font-family: var(--font);
-  font-size: 13px; font-weight: 600; text-align: center;
-  border: none; background: none; color: var(--text-muted); border-radius: 7px;
-  cursor: pointer; transition: color 0.25s; position: relative; overflow: hidden;
-}
-.subtab.active { color: #fff; }
-.subtab-bar:not(.has-ind) .subtab.active { background: var(--primary); }
-.subtab-bar > .tab-ind {
-  position: absolute; top: 3px; bottom: 3px; left: 0; width: 0;
-  border-radius: 7px; background: var(--primary);
-}
-.subtab .subtab-badge {
-  display: inline-block; min-width: 18px; padding: 1px 5px;
-  font-size: 10px; font-weight: 700; border-radius: 10px;
-  margin-left: 5px; vertical-align: middle;
-}
-.subtab .subtab-badge[hidden] { display: none; }
 .client-chip .cnt { margin-left: 2px; font-weight: 700; font-variant-numeric: tabular-nums; opacity: 0.75; }
-.subtab.active .subtab-badge { background: rgba(255,255,255,0.25); color: #fff; }
-.subtab:not(.active) .subtab-badge { background: var(--danger); color: #fff; }
-.client-sub { display: none; }
-.client-sub.active { display: block; }
 
 /* ── BARRA DE ABAJO (celular) ── */
 .tab-bar {
