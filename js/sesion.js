@@ -110,6 +110,7 @@ function usarPaquete(res) {
   recibirConsultas(res.consultas, true);
   guardarCache();
   pintar();
+  mostrarResumenTurno();
 }
 
 // Post-its de Planet: solo se vuelven a dibujar si cambiaron (por ejemplo,
@@ -222,6 +223,7 @@ async function entrar() {
   sesion = Object.assign({}, res.user, { token: res.token });
   local.guardar('planet_user', sesion);
   abrirVista();
+  pedirResumenDeTurno(true);
   usarPaquete(res);
   arrancarRevision();
 }
@@ -246,6 +248,7 @@ function salir(sesionYaInvalida) {
 
 // Limpia todo lo que quedó en memoria de la persona anterior
 function olvidarPantalla() {
+  _turnoPendiente = false;
   _vistos = null;
   _estadosVistos = {};
   _firmaNotas = '';
@@ -269,6 +272,7 @@ function entrarConSesionGuardada() {
   if (!guardada || !guardada.token) { local.borrar('planet_user'); return; }
   sesion = guardada;
   abrirVista();
+  pedirResumenDeTurno(false);
   const cache = local.leer(claveCache());
   if (cache) { recibirConsultas(cache, true); pintar(); }
   cargarTodo();

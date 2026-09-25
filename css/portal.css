@@ -544,8 +544,6 @@ body {
   .reply-box { padding: 12px 18px 16px; }
   .card-asunto { font-size: 15px; }
   .stats-row { gap: 14px; }
-  .modal-overlay { align-items: center; }
-  .modal-content { border-radius: var(--radius); max-width: 520px; padding: 24px; }
 }
 
 /* ── MARCO DE PLANET (menú lateral + contenido) ── */
@@ -637,6 +635,30 @@ body {
   width: 32px; height: 32px; border-radius: 50%; border: none;
   background: var(--surface); display: grid; place-items: center;
   cursor: pointer; color: var(--text-muted);
+}
+/* En celular entra desde abajo; en computadora va centrada */
+@media (min-width: 760px) {
+  .modal-overlay { align-items: center; }
+  .modal-content { border-radius: var(--radius); max-width: 520px; padding: 24px; }
+}
+
+/* ── RESUMEN DE TURNO (Planet) ── */
+.turno-sub { font-size: 13px; color: var(--text-secondary); margin: -8px 0 6px; }
+.turno-fila {
+  display: flex; align-items: center; gap: 14px;
+  padding: 11px 0; border-bottom: 1px solid var(--card-border);
+}
+.turno-fila:last-child { border-bottom: none; }
+.turno-num {
+  min-width: 46px; text-align: center; font-size: 26px; font-weight: 800;
+  font-variant-numeric: tabular-nums; line-height: 1.1;
+}
+.turno-texto strong { display: block; font-size: 14px; }
+.turno-texto span { font-size: 12.5px; color: var(--text-muted); }
+.turno-acciones { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
+.turno-despues {
+  background: none; border: none; color: var(--text-muted);
+  font: 500 13px var(--font); cursor: pointer; padding: 6px 10px;
 }
 
 /* ── CARGANDO ── */

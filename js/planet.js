@@ -369,3 +369,76 @@ function irA(id) {
   if (id === 'planet-clientes') cargarClientes();
   if (id === 'planet-metricas') cargarMetricas();
 }
+
+// ── RESUMEN DE TURNO ──
+// Cuando alguien de Planet entra (arranca el turno) le mostramos cómo está la
+// bandeja: lo que falta atender, lo que lleva demasiado y lo que se reabrió.
+// No se repite si vuelve a entrar al rato: es para el cambio de turno.
+const HORAS_TURNO = 6;
+const claveTurno = () => 'turno_visto_' + (sesion ? sesion.usuario : '');
+let _turnoPendiente = false;
+
+// recienEntro: puso usuario y contraseña. Si no, es la sesión que quedó abierta.
+function pedirResumenDeTurno(recienEntro) {
+  if (!esPlanet()) return;
+  _turnoPendiente = recienEntro || Date.now() - (local.leer(claveTurno(), 0) || 0) > HORAS_TURNO * HORA_MS;
+}
+
+function resumenDeTurno() {
+  const ahora = Date.now();
+  const edad = c => { const alta = altaEnMs(c); return alta ? ahora - alta : 0; };
+  const por = g => consultas.filter(c => grupoPlanet(c.estado) === g);
+  const pendientes = por('pendiente'), proceso = por('proceso'), espera = por('espera');
+  const atender = pendientes.concat(proceso);
+  return {
+    pendientes, proceso, espera,
+    reabiertas: consultas.filter(fueReabierta),
+    viejas: atender.filter(c => edad(c) >= HORAS_URGENTE * HORA_MS),
+    masVieja: atender.reduce((m, c) => Math.max(m, edad(c)), 0)
+  };
+}
+
+function mostrarResumenTurno() {
+  if (!_turnoPendiente || !esPlanet()) return;
+  _turnoPendiente = false;
+  local.guardar(claveTurno(), Date.now());
+
+  const r = resumenDeTurno();
+  // Si no hay nada esperando por nosotros no le tapamos la pantalla con una ventana
+  if (!r.pendientes.length && !r.proceso.length && !r.reabiertas.length) {
+    return toast('✓ Todo al día', { desc: 'No hay consultas esperando respuesta nuestra.' });
+  }
+
+  const dias = HORAS_URGENTE / 24;
+  const fila = (n, color, titulo, detalle) => !n ? '' : `
+    <div class="turno-fila">
+      <span class="turno-num" style="color:${color}">${n}</span>
+      <div class="turno-texto"><strong>${titulo}</strong>${detalle ? `<span>${detalle}</span>` : ''}</div>
+    </div>`;
+
+  let detalle = '';
+  if (r.viejas.length) detalle = `${r.viejas.length} lleva${r.viejas.length > 1 ? 'n' : ''} más de ${dias} días${r.masVieja ? ' · la más vieja, ' + haceTanto(r.masVieja) : ''}`;
+  else if (r.masVieja) detalle = 'la más vieja, ' + haceTanto(r.masVieja);
+
+  $('turno-titulo').textContent = 'Hola, ' + (sesion.nombre || '') + ' 👋';
+  $('turno-sub').textContent = 'Así está la bandeja ahora:';
+  $('turno-filas').innerHTML =
+    fila(r.pendientes.length, 'var(--warning)', 'Pendientes sin atender', detalle) +
+    fila(r.proceso.length, 'var(--info)', 'En proceso', 'ya las tomó alguien') +
+    fila(r.reabiertas.length, 'var(--purple)', r.reabiertas.length > 1 ? 'Reabiertas' : 'Reabierta', 'el cliente volvió a escribir') +
+    fila(r.espera.length, 'var(--wait)', 'Esperando al cliente', 'no hace falta hacer nada');
+  $('turno-acciones').innerHTML = `
+    <button class="turno-despues" onclick="cerrarResumenTurno()">Después</button>
+    <button class="btn-primary" onclick="irAPendientesDelTurno()">${r.pendientes.length ? 'Ver las pendientes' : 'Ver la bandeja'}</button>`;
+  abrirModal('modal-turno');
+}
+
+function cerrarResumenTurno() { cerrarModal('modal-turno'); }
+
+function irAPendientesDelTurno() {
+  cerrarResumenTurno();
+  filtroCliente = 'Todos';
+  filtroEstado = consultas.some(c => grupoPlanet(c.estado) === 'pendiente') ? 'pendiente' : 'Todos';
+  irA('planet-consultas');
+  cambiarFiltro();
+}

@@ -249,25 +249,12 @@ async function responderCliente(id, btn) {
 
 // ── NUEVA CONSULTA ──
 function abrirNuevaConsultaCliente() {
-  const ov = $('modal-new-query');
-  ov.classList.add('active');
-  anim(ov, { opacity: [0, 1] }, { duracion: 220, mantener: false });
-  anim(ov.querySelector('.modal-content'), { transform: ['translateY(100%)', 'translateY(0)'] }, { resorte: [230, 21], mantener: false });
+  abrirModal('modal-new-query');
   ['nq-ref', 'nq-tipo', 'nq-mensaje'].forEach(id => { $(id).value = ''; });
   olvidarImagenes('nq');
 }
 function cerrarNuevaConsultaCliente() {
-  const ov = $('modal-new-query'), cont = ov.querySelector('.modal-content');
-  if (!ov.classList.contains('active') || ov._cerrando) return;
-  ov._cerrando = true;
-  Promise.all([
-    anim(cont, { transform: ['translateY(0)', 'translateY(100%)'] }, { duracion: 240, easing: 'cubic-bezier(.4,0,1,1)', mantener: false, fill: 'forwards' }),
-    anim(ov, { opacity: [1, 0] }, { duracion: 240, mantener: false, fill: 'forwards' })
-  ]).then(() => {
-    ov.classList.remove('active');
-    ov._cerrando = false;
-    [ov, cont].forEach(e => e.getAnimations().forEach(a => a.cancel()));
-  });
+  cerrarModal('modal-new-query');
 }
 
 async function enviarNuevaConsultaCliente() {

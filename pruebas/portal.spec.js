@@ -21,11 +21,17 @@ async function ventana(browser) {
   return page;
 }
 
-async function entrar(page, usuario) {
+async function entrar(page, usuario, dejarResumen) {
   await page.fill('#login-user', usuario);
   await page.fill('#login-pass', 'clave123');
   await page.click('#login-btn');
   await expect(page.locator(usuario.endsWith('.planet') ? '#screen-planet' : '#screen-client')).toHaveClass(/active/);
+  // El resumen de turno tapa la pantalla: salvo que la prueba lo esté mirando, se cierra
+  const turno = page.locator('#modal-turno');
+  if (!dejarResumen && await turno.evaluate((e) => e.classList.contains('active')).catch(() => false)) {
+    await page.evaluate(() => cerrarResumenTurno());
+    await expect(turno).not.toHaveClass(/active/);
+  }
   // Que no aparezca la guía de clientes nuevos en el medio de la prueba
   await page.evaluate(() => { local.guardar(claveGuia(), 1); if (_guia) cerrarGuia(); });
 }
@@ -226,6 +232,34 @@ test('nueva consulta de Planet: el cliente elegido no cambia solo y queda espera
   await expect(suya.locator('.ticket-status')).toHaveText('Esperando tu respuesta');
   const deNume = await apiDe(otro, { action: 'consultas' });
   expect(deNume.consultas.some((c) => c.asunto.includes(r))).toBe(false);
+});
+
+test('resumen de turno: al entrar, Planet ve cómo está la bandeja', async ({ browser }) => {
+  const cliente = await ventana(browser);
+  await entrar(cliente, 'nico.nume');
+  const r = ref('TURNO');
+  await crearConsultaCliente(cliente, r);
+
+  const planet = await ventana(browser);
+  await entrar(planet, 'beto.planet', true);
+  const modal = planet.locator('#modal-turno');
+  await expect(modal).toHaveClass(/active/);
+  await expect(planet.locator('#turno-titulo')).toContainText('Beto');
+  await expect(planet.locator('#turno-filas')).toContainText('Pendientes sin atender');
+  await expect(planet.locator('#turno-filas')).toContainText('la más vieja');
+
+  // El botón lleva a las pendientes
+  await planet.click('#turno-acciones .btn-primary');
+  await expect(modal).not.toHaveClass(/active/);
+  await expect(planet.locator('#planet-estado-filter .client-chip.active')).toContainText('Pendiente');
+  await expect(tarjetaPlanet(planet, r)).toBeVisible();
+
+  // Si recarga la página no se lo repetimos: es para el cambio de turno
+  await planet.reload();
+  await expect(planet.locator('#screen-planet')).toHaveClass(/active/);
+  await expect(tarjetaPlanet(planet, r)).toBeVisible();
+  await expect(modal).not.toHaveClass(/active/);
+  expect(planet.errores).toEqual([]);
 });
 
 test('un cliente con apóstrofo en el nombre funciona en los filtros', async ({ browser }) => {

@@ -208,6 +208,27 @@ function acomodarIndicadores() {
 window.addEventListener('resize', acomodarIndicadores);
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(acomodarIndicadores);
 
+// ── Ventanas (modales): entran desde abajo y se van igual ──
+function abrirModal(id) {
+  const ov = $(id);
+  ov.classList.add('active');
+  anim(ov, { opacity: [0, 1] }, { duracion: 220, mantener: false });
+  anim(ov.querySelector('.modal-content'), { transform: ['translateY(100%)', 'translateY(0)'] }, { resorte: [230, 21], mantener: false });
+}
+function cerrarModal(id) {
+  const ov = $(id), cont = ov.querySelector('.modal-content');
+  if (!ov.classList.contains('active') || ov._cerrando) return;
+  ov._cerrando = true;
+  Promise.all([
+    anim(cont, { transform: ['translateY(0)', 'translateY(100%)'] }, { duracion: 240, easing: 'cubic-bezier(.4,0,1,1)', mantener: false, fill: 'forwards' }),
+    anim(ov, { opacity: [1, 0] }, { duracion: 240, mantener: false, fill: 'forwards' })
+  ]).then(() => {
+    ov.classList.remove('active');
+    ov._cerrando = false;
+    [ov, cont].forEach(e => e.getAnimations().forEach(a => a.cancel()));
+  });
+}
+
 // ── Números que ruedan como un cuentakilómetros ──
 const _numsPrevios = {};
 function rodarNumeros(contId) {
