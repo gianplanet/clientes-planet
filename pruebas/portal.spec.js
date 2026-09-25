@@ -252,6 +252,19 @@ test('buscador', async ({ browser }) => {
   await expect(tarjetaCliente(cliente, r)).toBeVisible();
 });
 
+test('tipo de problema: se puede elegir Robo y queda en el asunto', async ({ browser }) => {
+  const cliente = await ventana(browser);
+  await entrar(cliente, 'nico.nume');
+  await cliente.click('#screen-client .fab');
+  await expect(cliente.locator('#nq-tipo option', { hasText: 'Robo' })).toHaveCount(1);
+  const r = ref('ROBO');
+  await cliente.fill('#nq-ref', r);
+  await cliente.selectOption('#nq-tipo', 'Robo');
+  await cliente.fill('#nq-mensaje', 'Se lo llevaron de la puerta');
+  await cliente.click('#nq-send');
+  await expect(tarjetaCliente(cliente, r)).toContainText('Robo');
+});
+
 test('historial: las cerradas viejas se cargan a pedido', async ({ browser }) => {
   const cliente = await ventana(browser);
   const planet = await ventana(browser);

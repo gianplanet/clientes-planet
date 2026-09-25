@@ -45,6 +45,7 @@ const TIPOS_PROBLEMA = [
   'Reprogramar entrega',
   'Paquete dañado',
   'Paquete faltante / extraviado',
+  'Robo',
   'Otro'
 ];
 function llenarTiposDeProblema() {
