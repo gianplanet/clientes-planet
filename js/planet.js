@@ -206,9 +206,11 @@ function tarjetaPlanet(c) {
       <div class="img-previews thread-previews" id="prev-p${c.id}">${previasHtml('p' + c.id)}</div>
       <div class="thread-reply-bar">
         <button type="button" class="attach-btn" onclick="elegirImagenes('p${c.id}')" title="Adjuntar fotos">${CLIP_ICON}</button>
-        <input class="thread-reply-input" placeholder="${textoRespuesta(grupo, false)}" id="preply-${c.id}" onkeydown="if(event.key==='Enter')responderPlanet(${c.id}, false, this.nextElementSibling)">
-        <button class="thread-reply-btn" onclick="responderPlanet(${c.id}, false, this)" title="${cerrada ? 'Envía el mensaje y reabre la consulta' : 'Envía el mensaje; la consulta queda En proceso'}">${cerrada ? 'Enviar y reabrir' : 'Enviar'}</button>
-        ${cerrada ? '' : `<button class="thread-reply-btn btn-wait" onclick="responderPlanet(${c.id}, true, this)" title="Envía el mensaje y pasa la consulta a Esperando info">Enviar y pedir info</button>`}
+        <input class="thread-reply-input" placeholder="${textoRespuesta(grupo, false)}" id="preply-${c.id}" onkeydown="if(event.key==='Enter')responderPlanet(${c.id}, '', this.nextElementSibling)">
+        <button class="thread-reply-btn" onclick="responderPlanet(${c.id}, '', this)" title="${cerrada ? 'Envía el mensaje y reabre la consulta' : 'Envía el mensaje; la consulta queda En proceso'}">${cerrada ? 'Enviar y reabrir' : 'Enviar'}</button>
+        ${cerrada ? '' : `
+        <button class="thread-reply-btn btn-wait" onclick="responderPlanet(${c.id}, 'info', this)" title="Envía el mensaje y pasa la consulta a Esperando info">Enviar y pedir info</button>
+        <button class="thread-reply-btn btn-cerrar" onclick="responderPlanet(${c.id}, 'cerrar', this)" title="Envía el mensaje y cierra la consulta">Enviar y cerrar</button>`}
       </div>`;
 
   const acciones = ACCIONES_ESTADO[grupo].map(([estado, cls, texto]) =>
@@ -245,13 +247,15 @@ function tarjetaPlanet(c) {
 }
 
 // ── RESPONDER Y CAMBIAR ESTADO ──
-async function responderPlanet(id, pedirInfo, btn) {
+// accion: '' (responder) | 'info' (y pedir info) | 'cerrar' (y cerrarla)
+async function responderPlanet(id, accion, btn) {
   const input = $('preply-' + id);
   const texto = input.value.trim();
   const clave = 'p' + id;
   if (input.disabled) return;
   if (!texto && !hayImagenes(clave)) {
-    toast(pedirInfo ? 'Escribí qué info necesitás del cliente' : 'Escribí un mensaje');
+    toast(accion === 'info' ? 'Escribí qué info necesitás del cliente'
+      : accion === 'cerrar' ? 'Escribí el mensaje con el que la cerrás' : 'Escribí un mensaje');
     sacudir(input); input.focus(); return;
   }
   const cardId = 'tcard-' + id;
@@ -264,14 +268,18 @@ async function responderPlanet(id, pedirInfo, btn) {
   if (!imagenes) return terminar();
   const params = { action: 'responder', id, texto };
   if (imagenes.length) params.imagenes = imagenes;
-  if (pedirInfo) params.esperar_info = '1';
+  if (accion === 'info') params.esperar_info = '1';
+  if (accion === 'cerrar') params.cerrar = '1';
   const res = await api(params);
   terminar();
 
   if (!res.ok) return toast('Error: ' + (res.error || 'No se pudo enviar') + ' — tocá ↻ antes de reenviar');
   input.value = '';
   olvidarImagenes(clave);
-  toast(res.reabierta ? '🔄 Consulta reabierta' : pedirInfo ? '✓ Mensaje enviado · Esperando info del cliente' : '✓ Mensaje enviado');
+  toast(res.reabierta ? '🔄 Consulta reabierta'
+    : accion === 'cerrar' ? '✓ Mensaje enviado · Consulta cerrada'
+    : accion === 'info' ? '✓ Mensaje enviado · Esperando info del cliente'
+    : '✓ Mensaje enviado');
   aplicarLocal(id, { estado: res.estado, atendido_por: sesion.nombre },
     { autor: sesion.usuario, nombre: sesion.nombre, fecha: ahoraTexto(), texto, imagenes });
   pintarPlanet();

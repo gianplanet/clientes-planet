@@ -167,14 +167,15 @@ export async function nuevaConsulta(db, me, p) {
 //  - Planet responde sin pedir info     → En proceso (si estaba pendiente)
 //  - El cliente responde                → Respuesta cliente (salvo que siga Abierta)
 //  - Cualquiera escribe en una cerrada  → se reabre (Planet: En proceso · cliente: Abierto)
-export function estadoTrasMensaje(estado, planet, pideInfo) {
+// accion: lo que eligió Planet al mandar el mensaje ('' | 'info' | 'cerrar').
+// Un mensaje en una cerrada siempre la reabre, aunque venga con acción.
+export function estadoTrasMensaje(estado, planet, accion) {
   if (estado === 'Cerrado') return planet ? 'En proceso' : 'Abierto';
-  if (planet) {
-    if (pideInfo) return 'Esperando info';
-    if (estado === 'Abierto' || estado === 'Respuesta cliente') return 'En proceso';
-    return estado;
-  }
-  return estado === 'Abierto' ? estado : 'Respuesta cliente';
+  if (!planet) return estado === 'Abierto' ? estado : 'Respuesta cliente';
+  if (accion === 'cerrar') return 'Cerrado';
+  if (accion === 'info') return 'Esperando info';
+  if (estado === 'Abierto' || estado === 'Respuesta cliente') return 'En proceso';
+  return estado;
 }
 
 export async function responder(db, me, p) {
@@ -189,7 +190,9 @@ export async function responder(db, me, p) {
 
   const ahora = Date.now();
   const reabre = c.estado === 'Cerrado';
-  const nuevo = estadoTrasMensaje(c.estado, esPlanet(me), esVerdadero(p.esperar_info));
+  // Solo Planet puede pedir info o cerrar al mandar el mensaje
+  const accion = !esPlanet(me) ? '' : esVerdadero(p.cerrar) ? 'cerrar' : esVerdadero(p.esperar_info) ? 'info' : '';
+  const nuevo = estadoTrasMensaje(c.estado, esPlanet(me), accion);
   const ops = [
     insertarMensaje(db, { consultaId: id, me, fecha: ahoraAR(false, ahora), texto: t, imgs, cuando: ahora }),
     anotarEvento(db, { consultaId: id, evento: 'mensaje', de: c.estado, me, cuando: ahora }),
@@ -205,6 +208,10 @@ export async function responder(db, me, p) {
   }
   if (nuevo !== c.estado) {
     ops.push(db.prepare('UPDATE consultas SET estado = ? WHERE id = ?').bind(nuevo, id));
+  }
+  // Al cerrar queda la hora exacta, igual que con el botón de Cerrar
+  if (nuevo === 'Cerrado' && c.estado !== 'Cerrado') {
+    ops.push(db.prepare('UPDATE consultas SET cerrado_en = ? WHERE id = ?').bind(ahora, id));
   }
   // El primero de Planet que la mueve queda como quien la atiende
   if (esPlanet(me) && nuevo !== c.estado && !c.atendido_por) {

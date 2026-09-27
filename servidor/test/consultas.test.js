@@ -173,6 +173,30 @@ describe('flujo de estados', () => {
     ]);
   });
 
+  it('Planet puede cerrar en el mismo mensaje, y el cliente no', async () => {
+    const { nume, planet } = await escenario();
+    const { id } = await consulta(nume);
+
+    // El cliente no puede cerrarla ni pidiéndolo
+    await nume({ action: 'responder', id, texto: 'Un dato más', cerrar: '1' });
+    expect((await fila(id)).estado).toBe('Abierto');
+
+    // Planet manda el mensaje y la cierra de una
+    expect(await planet({ action: 'responder', id, texto: 'Ya se entregó', cerrar: '1' }))
+      .toMatchObject({ ok: true, estado: 'Cerrado' });
+    const cerrada = await fila(id);
+    expect(cerrada).toMatchObject({ estado: 'Cerrado', atendido_por: 'Beto' });
+    expect(cerrada.cerrado_en).toBeGreaterThan(Date.now() - 60000);
+    // Queda el mensaje y el cambio de estado anotado
+    expect((await db.prepare('SELECT COUNT(*) AS n FROM mensajes WHERE consulta_id = ?').bind(id).first()).n).toBe(3);
+    const eventos = (await db.prepare('SELECT evento, a_estado FROM eventos WHERE consulta_id = ? ORDER BY id').bind(id).all()).results;
+    expect(eventos.at(-1)).toMatchObject({ evento: 'estado', a_estado: 'Cerrado' });
+
+    // Y si escribe en la cerrada, la reabre igual que antes (no la cierra de nuevo)
+    expect(await planet({ action: 'responder', id, texto: 'Perdón, seguimos', cerrar: '1' }))
+      .toMatchObject({ ok: true, reabierta: true, estado: 'En proceso' });
+  });
+
   it('Planet reabre desde el botón: queda En proceso y cuenta la reapertura', async () => {
     const { nume, planet } = await escenario();
     const { id } = await consulta(nume);
@@ -266,4 +290,5 @@ describe('migración 0002 (fechas de la planilla)', () => {
     // El alta imposible (1 ms) se toma del primer mensaje
     expect((await fila(1)).creado_en).toBe(Date.UTC(2026, 7, 29, 3));
   });
+
 });

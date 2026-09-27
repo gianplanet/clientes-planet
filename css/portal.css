@@ -447,11 +447,11 @@ body {
 .thread-time { font-size: 11px; color: var(--text-muted); }
 .thread-text { font-size: 13px; color: var(--text-secondary); line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
 .thread-reply-bar {
-  display: flex; gap: 8px; margin-top: 8px; padding-top: 8px;
+  display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; padding-top: 8px;
   border-top: 1px dashed var(--card-border);
 }
 .thread-reply-input {
-  flex: 1; padding: 8px 12px; border: 1.5px solid var(--input-border);
+  flex: 1 1 180px; padding: 8px 12px; border: 1.5px solid var(--input-border);
   border-radius: var(--radius-sm); background: var(--input-bg);
   font-family: var(--font); font-size: 13px; color: var(--text); outline: none;
 }
@@ -462,6 +462,7 @@ body {
   font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap;
 }
 .thread-reply-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.thread-reply-btn.btn-cerrar { background: var(--success); }
 
 /* ── TARJETA DEL CLIENTE ── */
 .consulta-card {

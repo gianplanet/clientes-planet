@@ -119,13 +119,19 @@ test('circuito completo entre cliente y Planet', async ({ browser }) => {
   await expect(tarjetaCliente(cliente, r).locator('.timeline-item').last()).toContainText('Calle Falsa 123');
 
   // 5. Planet la ve de nuevo pendiente ("Respondió el cliente") y la cierra
+  // con el mismo mensaje, en un solo paso
   await revisar(planet);
   await planet.click('#planet-estado-filter >> text=Pendiente');
   const t2 = tarjetaPlanet(planet, r);
   await expect(t2.locator('.tag-respondio')).toBeVisible();
-  await t2.getByRole('button', { name: 'Cerrar' }).click();
+  await t2.locator('.thread-reply-input').fill('Se entregó hoy, gracias');
+  await t2.getByRole('button', { name: 'Enviar y cerrar' }).click();
   await planet.click('#planet-estado-filter >> text=Cerrado');
-  await expect(tarjetaPlanet(planet, r).locator('.ticket-status')).toHaveText('Cerrado');
+  const t3 = tarjetaPlanet(planet, r);
+  await expect(t3.locator('.ticket-status')).toHaveText('Cerrado');
+  await expect(t3.locator('.thread-text').last()).toHaveText('Se entregó hoy, gracias');
+  // En una cerrada no se ofrece cerrarla otra vez
+  await expect(t3.getByRole('button', { name: 'Enviar y cerrar' })).toHaveCount(0);
 
   // 6. Al cliente le aparece el aviso de resuelta
   await revisar(cliente);
@@ -447,7 +453,7 @@ test('una respuesta vieja del servidor no pisa un cambio recién hecho', async (
   const vieja = await planet.evaluate((r) => JSON.parse(JSON.stringify(consultas.find((c) => c.asunto.includes(r)))), r);
   await planet.click('#planet-estado-filter >> text=Todos');
   await tarjetaPlanet(planet, r).locator('.card-summary').click();
-  await tarjetaPlanet(planet, r).getByRole('button', { name: 'Cerrar' }).click();
+  await tarjetaPlanet(planet, r).getByRole('button', { name: 'Cerrar', exact: true }).click();
   await expect(tarjetaPlanet(planet, r).locator('.ticket-status')).toHaveText('Cerrado');
   await planet.evaluate((v) => { if (recibirConsultas([v], false)) pintar(); }, vieja);
   await expect(tarjetaPlanet(planet, r).locator('.ticket-status')).toHaveText('Cerrado');
