@@ -57,6 +57,13 @@ Corre las dos tandas:
   flujo de estados, métricas, límite de intentos de login.
 - **Portal** (`npm run test:portal`): abre Chromium, entra como cliente y como Planet y usa el
   portal de punta a punta, contra un servidor y una base **locales** (no toca producción).
+  Son tres archivos en `pruebas/`:
+  - `portal.spec.js`: el uso normal de todos los días.
+  - `torpe.spec.js`: el uso con mala suerte (doble clic, internet que se corta, textos enormes,
+    archivos que no son fotos, sesión vencida, dos personas sobre la misma consulta).
+  - `celular.spec.js`: lo mismo en tamaño iPhone y Android (que nada se salga de la pantalla,
+    que los botones se puedan tocar). Se simulan sobre Chrome: Safari de verdad hay que
+    mirarlo en un iPhone.
 
 ## Publicar
 

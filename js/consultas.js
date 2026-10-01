@@ -53,6 +53,24 @@ function llenarTiposDeProblema() {
     TIPOS_PROBLEMA.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('');
   document.querySelectorAll('.tipo-select').forEach(sel => { sel.innerHTML = html; });
 }
+// Topes de largo (los mismos que el servidor). Los campos no dejan pasarse y,
+// si igual llega algo más largo (pegado), se avisa en vez de mandarlo cortado.
+const MAX_MENSAJE = 5000;
+const MAX_REFERENCIA = 120;
+function muyLargo(texto, max, que) {
+  if (texto.length <= max) return false;
+  toast(`Error: ${que} es muy largo (${texto.length} letras; el máximo es ${max}). Acortalo y probá de nuevo.`);
+  return true;
+}
+// Al llegar al tope de un campo, se avisa (si no, parece que el teclado dejó de andar)
+let _avisoTope = 0;
+document.addEventListener('input', e => {
+  const el = e.target;
+  if (!el || !(el.maxLength > 0) || el.value.length < el.maxLength || Date.now() - _avisoTope < 4000) return;
+  _avisoTope = Date.now();
+  toast('Máximo ' + el.maxLength + ' letras en este campo');
+});
+
 function armarAsunto(referencia, cliente, tipo) {
   // Las partes se separan con " · ": si la referencia trae ese símbolo lo
   // cambiamos por un guion, si no al copiar se cortaría justo ahí.
@@ -64,13 +82,30 @@ function armarAsunto(referencia, cliente, tipo) {
 
 // Palabras que la gente escribe adelante del dato y que Lightdata no entiende
 // ("Tracking 152089", "Venta N° 4521"). Se sacan solo del principio.
-const ETIQUETAS_REF = /^(?:(?:tracking|seguimiento|env[ií]o|gu[ií]a|venta|pedido|orden|nro\.?|n[°º]|n[úu]m(?:ero)?\.?|#)\s*[:\-–]?\s*)+/i;
+// La etiqueta tiene que ser la palabra entera: "Numancia 450" o "Ventana rota" no llevan etiqueta.
+const ETIQUETAS_REF = /^(?:(?:tracking|seguimiento|env[ií]o|gu[ií]a|venta|pedido|orden|nro\.?|n[°º]|n[úu]m(?:ero)?\.?|#)(?![a-záéíóúñ])\s*[:\-–]?\s*)+/i;
 
-// Lo que se copia de una consulta: lo que escribió el cliente, sin esas etiquetas
+// Lo que se copia de una consulta: lo que escribió el cliente, sin esas etiquetas.
+// Solo se sacan si lo que sigue es un número o código ("Orden de compra 1234" queda entero).
 function refDeAsunto(asunto) {
   const primera = (String(asunto || '').split(' · ')[0] || '').trim();
-  return primera.replace(ETIQUETAS_REF, '').trim() || primera;
+  const sinEtiqueta = primera.replace(ETIQUETAS_REF, '').trim();
+  return /^\S*\d/.test(sinEtiqueta) ? sinEtiqueta : primera;
 }
+
+// ── BORRADORES ──
+// Lo que se está escribiendo en cada respuesta se recuerda acá, así no se
+// pierde cuando la lista se vuelve a dibujar (por una actualización, por
+// cambiar de solapa, por tocar ↻...). Se olvida al enviar o al salir.
+const ES_CAMPO_RESPUESTA = /^p?reply-\d+$/;
+const borradores = {};   // id del campo → texto
+document.addEventListener('input', e => {
+  const el = e.target;
+  if (!el || !ES_CAMPO_RESPUESTA.test(el.id || '')) return;
+  if (el.value) borradores[el.id] = el.value; else delete borradores[el.id];
+});
+function borrador(idCampo) { return esc(borradores[idCampo] || ''); }
+function olvidarBorrador(idCampo) { delete borradores[idCampo]; }
 
 // ── BOTONES "CARGANDO": evita que se toque varias veces mientras se guarda ──
 function ocupado(btn, texto) {

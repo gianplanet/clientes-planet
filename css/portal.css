@@ -346,7 +346,8 @@ body {
 }
 .copy-btn:hover { border-color: var(--primary); color: var(--primary); }
 .copy-btn svg { width: 14px; height: 14px; }
-.card-top { display: flex; align-items: center; gap: 8px; }
+/* Si las etiquetas no entran en un renglón, bajan (antes empujaban la flecha fuera de la tarjeta) */
+.card-top { display: flex; align-items: center; gap: 6px 8px; flex-wrap: wrap; }
 .card-date { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .card-chevron {
   margin-left: auto; width: 18px; height: 18px; flex-shrink: 0;
@@ -626,7 +627,7 @@ body {
 .modal-content {
   background: var(--card); border-radius: var(--radius) var(--radius) 0 0;
   width: 100%; max-width: 420px; padding: 20px 16px 32px;
-  max-height: 80vh; overflow-y: auto;
+  max-height: 80vh; max-height: 80dvh; overflow-y: auto;
 }
 .modal-title {
   font-size: 16px; font-weight: 700; margin-bottom: 16px;
@@ -885,7 +886,21 @@ body {
 .empty-state p { font-size: 14px; }
 
 @media (max-width: 700px) {
-  .sidebar { display: none; }
+  /* En el celular el menú de Planet pasa a ser una fila de botones arriba */
+  .desktop-layout { flex-direction: column; min-height: 0; }
+  .sidebar {
+    width: auto; display: flex; gap: 6px; overflow-x: auto; padding: 10px 0;
+    border-right: none; border-bottom: 1px solid var(--card-border); background: none; border-radius: 0;
+    scrollbar-width: none;
+  }
+  .sidebar::-webkit-scrollbar { display: none; }
+  .sidebar-item {
+    width: auto; flex-shrink: 0; white-space: nowrap; padding: 8px 12px;
+    border: 1px solid var(--card-border); border-radius: 999px; background: var(--card);
+  }
+  .sidebar-item.active, .sidebar.has-ind .sidebar-item.active { background: var(--primary-light); border-color: var(--primary); }
+  .sidebar-item.active::before, .sidebar > .tab-ind, .sidebar-sep { display: none; }
+  .sidebar-badge { margin-left: 2px; }
   .main-content { padding: 16px 0; }
   .form-row { flex-direction: column; gap: 10px; }
   .desktop-frame { padding: 0 16px; }
@@ -939,3 +954,18 @@ body {
 
 /* Lo que tiene el atributo hidden no se ve, aunque su clase diga otra cosa */
 [hidden] { display: none !important; }
+
+/* ── CELULAR: detalles ── */
+/* En iPhone, un campo con letra de menos de 16 px hace que la pantalla haga
+   zoom sola al tocarlo y quede corrida. */
+@media (max-width: 760px) {
+  input, select, textarea { font-size: 16px !important; }
+}
+/* Los post-its son para la computadora: en un celular taparían los botones */
+@media (max-width: 700px) {
+  .notas-capa, .btn-nota { display: none !important; }
+}
+/* En pantallas anchas el "+" queda al costado del contenido: no hace falta esconderlo */
+@media (min-width: 960px) {
+  .fab.oculto { opacity: 1; transform: none; pointer-events: auto; }
+}

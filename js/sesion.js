@@ -73,9 +73,25 @@ const claveCache = () => 'planet_cache_' + (sesion ? sesion.usuario : '');
 function guardarCache() { local.guardar(claveCache(), consultas.map(({ _actividad, _busqueda, ...c }) => c)); }
 
 // ── CARGAR ──
+// Redibujar la lista arma las tarjetas de nuevo. Para que eso no moleste a
+// quien está en el medio de algo, se conserva dónde tenía el cursor y hasta
+// dónde había leído cada conversación abierta (lo escrito lo guardan los
+// borradores, ver consultas.js).
 function pintar() {
   if (!sesion) return;
+  const foco = document.activeElement;
+  const campo = foco && ES_CAMPO_RESPUESTA.test(foco.id || '') ? { id: foco.id, a: foco.selectionStart, b: foco.selectionEnd } : null;
+  const lecturas = Array.from(document.querySelectorAll('.open .msgs-scroll')).map(el =>
+    ({ id: el.id, top: el.scrollTop, alFinal: el.scrollHeight - el.scrollTop - el.clientHeight < 40 }));
+
   if (esPlanet()) pintarPlanet(); else pintarCliente();
+
+  lecturas.forEach(l => { const el = $(l.id); if (el) el.scrollTop = l.alFinal ? el.scrollHeight : l.top; });
+  const el = campo && $(campo.id);
+  if (el) {
+    el.focus({ preventScroll: true });
+    try { el.setSelectionRange(campo.a, campo.b); } catch (e) {}
+  }
 }
 
 function mostrarErrorDeCarga(error) {
@@ -167,15 +183,20 @@ const RECARGAR_TODO_CADA_MS = 10 * 60000;
 let _revisarTimer = null;
 let _ultimaCargaCompleta = 0;
 
-// No interrumpe a alguien que está en el medio de algo: al volver a dibujar
-// se borraría lo que está escribiendo o eligiendo.
+// No interrumpe a alguien que está escribiendo o eligiendo algo en este
+// momento (en el celular, redibujar le cerraría el teclado). Pero solo
+// mientras lo está haciendo: antes alcanzaba con dejar un borrador olvidado,
+// o el cursor en un campo, para que el portal dejara de actualizarse por horas.
+const ESPERA_TECLEO_MS = 45000;
+let _ultimaTecla = 0;
+['input', 'change', 'keydown', 'focusin'].forEach(tipo =>
+  document.addEventListener(tipo, () => { _ultimaTecla = Date.now(); }, true));
+
 function estaOcupado() {
   if (document.querySelector('.modal-overlay.active, #lightbox.active')) return true;
   const foco = document.activeElement;
-  if (foco && /^(INPUT|TEXTAREA|SELECT)$/.test(foco.tagName) && !foco.classList.contains('search-input')) return true;
-  // Respuestas a medio escribir (del cliente o de Planet) o con fotos adjuntas
-  if ([...document.querySelectorAll('input[id^="reply-"], input[id^="preply-"]')].some(i => i.value.trim())) return true;
-  return Object.keys(imgsPendientes).some(k => /^[cp]\d+$/.test(k) && imgsPendientes[k].length);
+  if (!foco || !/^(INPUT|TEXTAREA|SELECT)$/.test(foco.tagName) || foco.classList.contains('search-input')) return false;
+  return Date.now() - _ultimaTecla < ESPERA_TECLEO_MS;
 }
 
 async function revisarNovedades() {
@@ -199,6 +220,7 @@ async function entrar() {
   const usuario = $('login-user').value.trim();
   const password = $('login-pass').value.trim();
   const error = $('login-error'), btn = $('login-btn');
+  if (btn.disabled) return;   // ya está entrando (Enter repetido)
   if (!usuario || !password) {
     error.textContent = 'Completá usuario y contraseña';
     error.style.display = 'block';
@@ -240,6 +262,9 @@ function salir(sesionYaInvalida) {
   historialCompleto = true;
   conHistorial = false;
   datosMostrados = false;
+  // Ninguna ventana queda abierta encima del login
+  document.querySelectorAll('.modal-overlay.active').forEach(m => m.classList.remove('active'));
+  cerrarImagen();
   olvidarPantalla();
   $('login-user').value = '';
   $('login-pass').value = '';
@@ -255,6 +280,18 @@ function olvidarPantalla() {
   notasData = [];
   _clientesCargados = false;
   if (capaNotas()) capaNotas().innerHTML = '';
+  // Que no quede nada de sus consultas en la página, ni escondido
+  ['client-list', 'client-alert', 'client-stats', 'planet-consultas-list', 'planet-alert', 'planet-stats', 'planet-filter',
+    'users-list', 'clients-list', 'met-contenido']
+    .forEach(id => { $(id).innerHTML = ''; });
+  // El próximo que entre arranca en Consultas (y no en Usuarios, si el anterior era admin)
+  document.querySelectorAll('.sidebar-item').forEach(b => b.classList.toggle('active', b.dataset.seccion === 'planet-consultas'));
+  document.querySelectorAll('#screen-planet .planet-sub').forEach(s => s.classList.toggle('active', s.id === 'planet-consultas'));
+  Object.keys(borradores).forEach(k => delete borradores[k]);
+  ['client-search', 'planet-search'].forEach(id => { $(id).value = ''; $(id).closest('.search-row').classList.remove('con-texto'); });
+  busquedaCliente = busquedaPlanet = '';
+  filtroCliente = 'Todos';
+  filtroEstado = 'pendiente';
   if (_guia) { _guia.root.remove(); _guia = null; }
   [clientTabEstado, _numsPrevios, imgsPendientes, visibles].forEach(o => Object.keys(o).forEach(k => delete o[k]));
   openCards.clear();

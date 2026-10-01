@@ -2,61 +2,7 @@
 // en dos ventanas, haciendo lo de todos los días.
 import { test, expect } from '@playwright/test';
 
-const API_PRODUCCION = 'https://portal-planet.gianlucca-planet.workers.dev';
-const API_LOCAL = 'http://127.0.0.1:8787';
-
-// Abre una ventana nueva (sin sesión) con el portal hablando con el servidor local
-async function ventana(browser) {
-  const context = await browser.newContext();
-  await context.route(API_PRODUCCION + '/**', async (route) => {
-    const url = route.request().url().replace(API_PRODUCCION, API_LOCAL);
-    route.fulfill({ response: await route.fetch({ url }) });
-  });
-  const page = await context.newPage();
-  page.errores = [];
-  page.on('pageerror', (e) => page.errores.push(e.message));
-  page.on('console', (m) => { if (m.type() === 'error') page.errores.push(m.text()); });
-  page.on('dialog', (d) => d.accept());
-  await page.goto('/');
-  return page;
-}
-
-async function entrar(page, usuario, dejarResumen) {
-  await page.fill('#login-user', usuario);
-  await page.fill('#login-pass', 'clave123');
-  await page.click('#login-btn');
-  await expect(page.locator(usuario.endsWith('.planet') ? '#screen-planet' : '#screen-client')).toHaveClass(/active/);
-  // El resumen de turno tapa la pantalla: salvo que la prueba lo esté mirando, se cierra
-  const turno = page.locator('#modal-turno');
-  if (!dejarResumen && await turno.evaluate((e) => e.classList.contains('active')).catch(() => false)) {
-    await page.evaluate(() => cerrarResumenTurno());
-    await expect(turno).not.toHaveClass(/active/);
-  }
-  // Que no aparezca la guía de clientes nuevos en el medio de la prueba
-  await page.evaluate(() => { local.guardar(claveGuia(), 1); if (_guia) cerrarGuia(); });
-}
-
-// Dispara la actualización automática sin esperar los 30 s
-const revisar = (page) => page.evaluate(() => revisarNovedades());
-const refrescar = (page) => page.evaluate(() => refrescar());
-
-// Llamada directa al servidor local con la sesión de la página
-const apiDe = (page, params) => page.evaluate((p) => api(p), params);
-
-let n = 0;
-const ref = (base) => `${base}-${Date.now().toString(36)}-${++n}`;
-
-async function crearConsultaCliente(page, referencia, mensaje = 'No llegó el paquete') {
-  await page.click('#screen-client .fab');
-  await page.fill('#nq-ref', referencia);
-  await page.selectOption('#nq-tipo', 'No entregado');
-  await page.fill('#nq-mensaje', mensaje);
-  await page.click('#nq-send');
-  await expect(page.locator('#modal-new-query')).not.toHaveClass(/active/);
-}
-
-const tarjetaPlanet = (page, texto) => page.locator('.ticket-card', { hasText: texto });
-const tarjetaCliente = (page, texto) => page.locator('.consulta-card', { hasText: texto });
+import { API_PRODUCCION, API_LOCAL, ventana, entrar, revisar, refrescar, apiDe, ref, crearConsultaCliente, tarjetaPlanet, tarjetaCliente } from './ayuda.js';
 
 test('login: datos incorrectos y salir', async ({ browser }) => {
   const page = await ventana(browser);
@@ -144,9 +90,8 @@ test('circuito completo entre cliente y Planet', async ({ browser }) => {
   await tc2.locator('.card-summary').click();
   await tc2.locator('input[id^="reply-"]').fill('Sigue sin llegar');
   await tc2.locator('.reply-send').click();
-  // Cuando el servidor confirma, sale de "Cerradas" y vuelve a "Pendiente"
-  await expect(tarjetaCliente(cliente, r)).toHaveCount(0);
-  await cliente.locator('#client-list .client-chip[data-v="pendiente"]').click();
+  // Cuando el servidor confirma, pasa a "Pendiente" y la pantalla va con ella
+  await expect(cliente.locator('#client-list .client-chip.active')).toHaveAttribute('data-v', 'pendiente');
   await expect(tarjetaCliente(cliente, r).locator('.tag-reabierta')).toBeVisible();
   await revisar(planet);
   await planet.click('#planet-estado-filter >> text=Pendiente');

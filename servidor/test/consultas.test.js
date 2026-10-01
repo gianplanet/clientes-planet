@@ -5,7 +5,7 @@ import { escenario, consulta, fila, db } from './ayuda.js';
 describe('crear y listar', () => {
   it('el cliente crea una consulta y Planet la ve con su primer mensaje', async () => {
     const { nume, planet } = await escenario();
-    const r = await consulta(nume, { mensaje: 'No llegó el paquete', imagenes: JSON.stringify(['https://x.test/img/a.jpg']) });
+    const r = await consulta(nume, { mensaje: 'No llegó el paquete', imagenes: JSON.stringify(['https://portal.test/img/00000000-0000-4000-8000-000000000000.jpg']) });
     expect(r).toEqual({ ok: true, id: expect.any(Number) });
 
     const { consultas } = await planet({ action: 'consultas' });
@@ -13,7 +13,7 @@ describe('crear y listar', () => {
     expect(consultas[0]).toMatchObject({
       id: r.id, cliente: 'NUME', direccion: 'cliente_a_planet', estado: 'Abierto',
       creado_por: 'nico.nume', nombre_creador: 'Nico', tipo: 'No entregado',
-      mensajes: [{ autor: 'nico.nume', nombre: 'Nico', texto: 'No llegó el paquete', imagenes: ['https://x.test/img/a.jpg'] }],
+      mensajes: [{ autor: 'nico.nume', nombre: 'Nico', texto: 'No llegó el paquete', imagenes: ['https://portal.test/img/00000000-0000-4000-8000-000000000000.jpg'] }],
     });
     expect(consultas[0].creado_en).toBeGreaterThan(Date.now() - 60000);
     expect(consultas[0].fecha).toMatch(/^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}$/);
@@ -192,8 +192,8 @@ describe('flujo de estados', () => {
     const eventos = (await db.prepare('SELECT evento, a_estado FROM eventos WHERE consulta_id = ? ORDER BY id').bind(id).all()).results;
     expect(eventos.at(-1)).toMatchObject({ evento: 'estado', a_estado: 'Cerrado' });
 
-    // Y si escribe en la cerrada, la reabre igual que antes (no la cierra de nuevo)
-    expect(await planet({ action: 'responder', id, texto: 'Perdón, seguimos', cerrar: '1' }))
+    // Y si escribe en la cerrada sin pedir cerrarla, la reabre igual que antes
+    expect(await planet({ action: 'responder', id, texto: 'Perdón, seguimos' }))
       .toMatchObject({ ok: true, reabierta: true, estado: 'En proceso' });
   });
 
@@ -224,13 +224,170 @@ describe('flujo de estados', () => {
     expect((await planet({ action: 'responder', id, texto: '' })).error).toBe('Faltan campos');
   });
 
-  it('se puede responder solo con fotos, y se descartan las direcciones peligrosas', async () => {
+  it('se puede responder solo con fotos, y solo valen las subidas a este servidor', async () => {
     const { nume } = await escenario();
     const { id } = await consulta(nume);
-    const imagenes = JSON.stringify(['https://x.test/img/a.jpg', 'javascript:alert(1)', 'https://x.test/" onerror="alert(1)', '1AbCdEfGhIjKlMnOpQrStUv']);
+    const imagenes = JSON.stringify([
+      'https://portal.test/img/00000000-0000-4000-8000-000000000000.jpg', 'javascript:alert(1)', 'https://portal.test/img/" onerror="alert(1)',
+      'https://otro-sitio.example/espia.png',                      // de afuera: el navegador de Planet la cargaría
+      'https://portal.test/img/../?action=logout',
+      'https://portal.test.otro.example/img/00000000-0000-4000-8000-000000000000.jpg',
+      '1AbCdEfGhIjKlMnOpQrStUv',                                    // id de Google Drive (fotos viejas)
+    ]);
     expect((await nume({ action: 'responder', id, imagenes })).ok).toBe(true);
     const { imagenes: guardadas } = await db.prepare('SELECT imagenes FROM mensajes WHERE consulta_id = ? ORDER BY id DESC').bind(id).first();
-    expect(JSON.parse(guardadas)).toEqual(['https://x.test/img/a.jpg', '1AbCdEfGhIjKlMnOpQrStUv']);
+    expect(JSON.parse(guardadas)).toEqual(['https://portal.test/img/00000000-0000-4000-8000-000000000000.jpg', '1AbCdEfGhIjKlMnOpQrStUv']);
+    // Solo con direcciones de afuera no hay nada que mandar
+    expect((await nume({ action: 'responder', id, imagenes: ['https://otro-sitio.example/espia.png'] })).error).toBe('Faltan campos');
+  });
+
+  it('las fotos guardadas antes (con otra dirección) se siguen mostrando', async () => {
+    const { nume } = await escenario();
+    const { id } = await consulta(nume);
+    await db.prepare(`UPDATE mensajes SET imagenes = '["https://portal-viejo.workers.dev/img/x.jpg","javascript:alert(1)"]' WHERE consulta_id = ?`).bind(id).run();
+    const { consultas } = await nume({ action: 'consultas' });
+    expect(consultas[0].mensajes[0].imagenes).toEqual(['https://portal-viejo.workers.dev/img/x.jpg']);
+  });
+});
+
+describe('cerrar sin tapar mensajes del cliente', () => {
+  const version = async (api, id) => (await api({ action: 'consultas' })).consultas.find((c) => c.id === id).actualizado;
+
+  it('no deja cerrar si el cliente escribió después de lo que Planet tiene en pantalla', async () => {
+    const { nume, planet } = await escenario();
+    const { id } = await consulta(nume);
+    const visto = await version(planet, id);
+    await new Promise((r) => setTimeout(r, 5));
+    await nume({ action: 'responder', id, texto: 'Ojo, cambió la dirección' });
+
+    const aviso = { ok: false, novedad: true, error: expect.stringMatching(/mensaje nuevo/) };
+    expect(await planet({ action: 'responder', id, texto: 'Entregado', cerrar: '1', visto })).toEqual(aviso);
+    expect(await planet({ action: 'cambiar_estado', id, estado: 'Cerrado', visto })).toEqual(aviso);
+    // No se guardó nada a medias
+    expect((await fila(id)).estado).toBe('Abierto');
+    const { n } = await db.prepare('SELECT COUNT(*) n FROM mensajes WHERE consulta_id = ?').bind(id).first();
+    expect(n).toBe(2);
+
+    // Responder sin cerrar, o pasarla a En proceso, no se frena
+    expect((await planet({ action: 'cambiar_estado', id, estado: 'En proceso', visto })).ok).toBe(true);
+    // Con la versión nueva en pantalla (ya leyó el mensaje) sí cierra
+    const ahora = await version(planet, id);
+    expect((await planet({ action: 'responder', id, texto: 'Entregado', cerrar: '1', visto: ahora })).estado).toBe('Cerrado');
+  });
+
+  it('un cambio de un compañero no frena el cierre, y sin "visto" funciona como antes', async () => {
+    const { nume, planet, admin } = await escenario();
+    const a = await consulta(nume);
+    const visto = await version(planet, a.id);
+    await new Promise((r) => setTimeout(r, 5));
+    await admin({ action: 'responder', id: a.id, texto: 'La estoy viendo' });
+    expect((await planet({ action: 'cambiar_estado', id: a.id, estado: 'Cerrado', visto })).ok).toBe(true);
+
+    const b = await consulta(nume);
+    await nume({ action: 'responder', id: b.id, texto: 'otro mensaje' });
+    expect((await planet({ action: 'cambiar_estado', id: b.id, estado: 'Cerrado' })).ok).toBe(true);   // portal anterior
+  });
+
+  it('"Enviar y cerrar" sobre una que ya cerró un compañero la deja cerrada', async () => {
+    const { nume, planet, admin } = await escenario();
+    const { id } = await consulta(nume);
+    await admin({ action: 'cambiar_estado', id, estado: 'Cerrado' });
+    const cierre = (await fila(id)).cerrado_en;
+    const r = await planet({ action: 'responder', id, texto: 'Ya está entregado', cerrar: '1' });
+    expect(r).toMatchObject({ ok: true, reabierta: false, estado: 'Cerrado' });
+    expect(await fila(id)).toMatchObject({ estado: 'Cerrado', cerrado_en: cierre, reaberturas: 0, reabierta_en: null });
+    // Sin la orden de cerrar, un mensaje en una cerrada la sigue reabriendo
+    expect(await planet({ action: 'responder', id, texto: 'Perdón, falta algo' })).toMatchObject({ reabierta: true, estado: 'En proceso' });
+    expect(await fila(id)).toMatchObject({ estado: 'En proceso', cerrado_en: null, reaberturas: 1 });
+  });
+
+  it('si el cliente y Planet actúan a la vez, no queda "abierta con hora de cierre"', async () => {
+    const { nume, planet } = await escenario();
+    for (let i = 0; i < 6; i++) {
+      const { id } = await consulta(nume);
+      await Promise.all([
+        nume({ action: 'responder', id, texto: 'Sigo esperando' }),
+        i % 2 ? planet({ action: 'cambiar_estado', id, estado: 'Cerrado' }) : planet({ action: 'responder', id, texto: 'Listo', cerrar: '1' }),
+      ]);
+      const c = await fila(id);
+      expect(c.estado === 'Cerrado', `${c.estado} / ${c.cerrado_en}`).toBe(c.cerrado_en !== null);
+    }
+  });
+});
+
+describe('lecturas a la base (Cloudflare cuenta cada fila leída)', () => {
+  // Una base que cuenta lo que se lee, para medir lo que gasta cada revisión
+  const contando = () => {
+    const cuenta = { filas: 0 };
+    cuenta.db = {
+      prepare: (sql) => db.prepare(sql),
+      batch: async (ops) => {
+        const r = await db.batch(ops);
+        r.forEach((x) => { cuenta.filas += x.meta.rows_read; });
+        return r;
+      },
+    };
+    return cuenta;
+  };
+
+  it('una revisión sin cambios casi no lee, por más consultas que haya', async () => {
+    const { listarConsultas } = await import('../src/consultas.js');
+    await escenario();
+    const hace = Date.now() - 3600000;
+    const altas = [];
+    for (let i = 1; i <= 300; i++) {
+      const cliente = i % 4 ? 'GETBOX' : 'NUME';
+      altas.push(db.prepare(`INSERT INTO consultas (id, fecha, asunto, cliente, creado_por, estado, actualizado, creado_en) VALUES (?, '', 'a', ?, 'x', ?, ?, ?)`)
+        .bind(i, cliente, i % 3 ? 'Cerrado' : 'Abierto', hace, hace));
+      for (let j = 0; j < 3; j++) altas.push(db.prepare(`INSERT INTO mensajes (consulta_id, autor, fecha, creado_en) VALUES (?, 'x', '', ?)`).bind(i, hace));
+    }
+    for (let i = 0; i < altas.length; i += 50) await db.batch(altas.slice(i, i + 50));
+
+    const dePlanet = { usuario: 'beto.planet', team: 'planet' }, deNume = { usuario: 'nico.nume', team: 'cliente', cliente: 'NUME' };
+    for (const me of [dePlanet, deNume]) {
+      const c = contando();
+      const r = await listarConsultas(c.db, me, { desde: Date.now() });
+      expect(r.consultas).toEqual([]);
+      expect(r.ultimo).toBe(hace);
+      expect(c.filas, 'filas leídas por ' + me.usuario).toBeLessThan(10);
+    }
+
+    // Cambia una sola: se lee esa y sus mensajes, no todo
+    await db.prepare('UPDATE consultas SET actualizado = ? WHERE id = 8').bind(Date.now()).run();
+    for (const me of [dePlanet, deNume]) {
+      const c = contando();
+      const r = await listarConsultas(c.db, me, { desde: Date.now() - 1000 });
+      expect(r.consultas.map((x) => x.id)).toEqual([8]);
+      expect(r.consultas[0].mensajes).toHaveLength(3);
+      expect(c.filas, 'filas leídas por ' + me.usuario).toBeLessThan(20);
+    }
+
+    // La carga completa sigue trayendo todo, ordenado
+    const todo = await listarConsultas(db, dePlanet, {});
+    expect(todo.consultas).toHaveLength(300);
+    expect(todo.consultas[0].id).toBe(300);
+    expect(todo.consultas[299].mensajes).toHaveLength(3);
+    expect(todo.historialCompleto).toBe(true);
+  });
+
+  it('buscar al usuario de una sesión no recorre toda la tabla de usuarios', async () => {
+    const plan = await db.prepare(
+      `EXPLAIN QUERY PLAN SELECT u.* FROM sesiones s JOIN usuarios u ON lower(u.usuario) = lower(s.usuario) WHERE s.token = ? AND s.expira > ?`
+    ).bind('x', 1).all();
+    const pasos = plan.results.map((p) => p.detail).join(' | ');
+    expect(pasos).not.toMatch(/SCAN/);
+    expect(pasos).toMatch(/idx_usuarios_minusculas/);
+  });
+
+  it('a un cliente no se le mandan los usuarios de login', async () => {
+    const { nume, planet } = await escenario();
+    const { id } = await consulta(nume);
+    await planet({ action: 'responder', id, texto: 'Hola' });
+    const [c] = (await nume({ action: 'consultas' })).consultas;
+    expect(JSON.stringify(c)).not.toMatch(/beto\.planet|nico\.nume/);
+    expect(c.mensajes.map((m) => m.nombre)).toEqual(['Nico', 'Beto']);
+    const [p] = (await planet({ action: 'consultas' })).consultas;
+    expect(p.mensajes.map((m) => m.autor)).toEqual(['nico.nume', 'beto.planet']);
   });
 });
 

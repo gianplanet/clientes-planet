@@ -7,6 +7,7 @@ import { deB64 } from './auth.js';
 const TIPOS = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp' };
 const MAX_BYTES = 5 * 1024 * 1024;
 const CLAVE_VALIDA = /^[0-9a-f-]{36}\.(jpg|png|gif|webp)$/;
+export const esClaveDeImagen = (clave) => CLAVE_VALIDA.test(clave);
 
 export async function subirImagen(env, p, origen) {
   if (!env.IMAGENES) return err('El almacenamiento de imágenes todavía no está activado');
@@ -28,7 +29,8 @@ export async function subirImagen(env, p, origen) {
 }
 
 export async function servirImagen(env, url) {
-  const clave = decodeURIComponent(url.pathname.slice('/img/'.length));
+  // Una clave válida no lleva nada raro: no hace falta decodificar la dirección
+  const clave = url.pathname.slice('/img/'.length);
   if (!env.IMAGENES || !CLAVE_VALIDA.test(clave)) return new Response('No encontrada', { status: 404, headers: CORS });
   const { value, metadata } = await env.IMAGENES.getWithMetadata(clave, { type: 'arrayBuffer' });
   if (!value) return new Response('No encontrada', { status: 404, headers: CORS });
@@ -37,6 +39,8 @@ export async function servirImagen(env, url) {
       'Content-Type': metadata?.mime || 'image/jpeg',
       // Las imágenes nunca cambian: el navegador puede guardarlas para siempre
       'Cache-Control': 'public, max-age=31536000, immutable',
+      // Que el navegador la trate siempre como imagen, diga lo que diga el archivo
+      'X-Content-Type-Options': 'nosniff',
       ...CORS,
     },
   });

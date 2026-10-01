@@ -3,6 +3,7 @@
 import { ok, err } from './http.js';
 import { esPlanet } from './auth.js';
 import { ahoraAR, msDeFechaAR, tipoDeAsunto, esVerdadero, texto, idValido, DIA_MS } from './util.js';
+import { esClaveDeImagen } from './imagenes.js';
 
 // Estados que se guardan en la base. Cada lado los ve con su propio nombre
 // (eso lo resuelve el portal).
@@ -45,26 +46,41 @@ export async function listarConsultas(db, me, p = {}) {
   else if (!historial) { conds.push("(c.estado != 'Cerrado' OR c.actualizado >= ?)"); vals.push(ahora - DIAS_HISTORIAL * DIA_MS); }
   const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
 
-  const soloCliente = cliente ? 'AND cliente = ?' : '';
+  const soloCliente = cliente ? 'WHERE cliente = ?' : '';
   const valCliente = cliente ? [cliente] : [];
 
-  // Todo en un solo viaje a la base. Los mensajes van con JOIN y no con
-  // "IN (lista de ids)": D1 acepta como máximo 100 valores por consulta.
-  const [rConsultas, rMensajes, rUltimo, rViejas] = await db.batch([
-    db.prepare(`SELECT c.* FROM consultas c ${where} ORDER BY c.id DESC`).bind(...vals),
+  // Todo en un solo viaje a la base.
+  // Esto corre cada 30 s por cada persona con el portal abierto, y Cloudflare
+  // cuenta (y en el plan gratis, corta) por fila leída. Por eso:
+  //  - no se ordena en la base: así "lo que cambió desde X" va directo por el
+  //    índice de "actualizado" y, si no cambió nada, no lee casi nada;
+  //  - los mensajes se buscan por consulta (subconsulta, no una lista de ids:
+  //    D1 acepta como máximo 100 valores por consulta);
+  //  - las cerradas viejas solo se cuentan en la carga inicial.
+  const ops = [
+    db.prepare(`SELECT c.* FROM consultas c ${where}`).bind(...vals),
     db.prepare(
-      `SELECT m.consulta_id, m.autor, m.nombre, m.fecha, m.texto, m.imagenes
-       FROM mensajes m JOIN consultas c ON c.id = m.consulta_id ${where} ORDER BY m.id`
+      `SELECT m.id, m.consulta_id, m.autor, m.nombre, m.fecha, m.texto, m.imagenes
+       FROM mensajes m WHERE m.consulta_id IN (SELECT c.id FROM consultas c ${where})`
     ).bind(...vals),
-    db.prepare(`SELECT MAX(actualizado) AS u FROM consultas WHERE 1 ${soloCliente}`).bind(...valCliente),
-    db.prepare(
-      `SELECT COUNT(*) AS n FROM consultas WHERE estado = 'Cerrado' AND actualizado < ? ${soloCliente}`
-    ).bind(ahora - DIAS_HISTORIAL * DIA_MS, ...valCliente),
-  ]);
+    db.prepare(`SELECT MAX(actualizado) AS u FROM consultas ${soloCliente}`).bind(...valCliente),
+  ];
+  if (!desde && !historial) {
+    ops.push(db.prepare(
+      `SELECT COUNT(*) AS n FROM consultas ${soloCliente || 'WHERE 1'} AND estado = 'Cerrado' AND actualizado < ?`
+    ).bind(...valCliente, ahora - DIAS_HISTORIAL * DIA_MS));
+  }
+  const [rConsultas, rMensajes, rUltimo, rViejas] = await db.batch(ops);
+  rConsultas.results.sort((a, b) => b.id - a.id);
+  rMensajes.results.sort((a, b) => a.id - b.id);
 
+  // A un cliente no le mandamos los usuarios de login (ni los de Planet ni
+  // los de sus compañeros): el portal muestra el nombre.
+  const planet = esPlanet(me);
   const mensajes = new Map();
   for (const m of rMensajes.results) {
-    const msg = { autor: m.autor, nombre: m.nombre, fecha: m.fecha, texto: m.texto };
+    const msg = { nombre: m.nombre, fecha: m.fecha, texto: m.texto };
+    if (planet) msg.autor = m.autor;
     const imgs = leerImagenes(m.imagenes);
     if (imgs.length) msg.imagenes = imgs;
     if (!mensajes.has(m.consulta_id)) mensajes.set(m.consulta_id, []);
@@ -74,7 +90,7 @@ export async function listarConsultas(db, me, p = {}) {
   return {
     consultas: rConsultas.results.map((c) => ({
       id: c.id, fecha: c.fecha, asunto: c.asunto, cliente: c.cliente,
-      direccion: c.direccion, estado: c.estado, creado_por: c.creado_por,
+      direccion: c.direccion, estado: c.estado, creado_por: planet ? c.creado_por : '',
       nombre_creador: c.nombre_creador, atendido_por: c.atendido_por || '',
       tipo: c.tipo || tipoDeAsunto(c.asunto),
       creado_en: c.creado_en || msDeFechaAR(c.fecha),
@@ -87,7 +103,7 @@ export async function listarConsultas(db, me, p = {}) {
     })),
     ultimo: rUltimo.results[0]?.u || 0,
     // Si hay cerradas viejas que no se mandaron, el portal ofrece cargarlas
-    historialCompleto: historial || !!desde || !rViejas.results[0]?.n,
+    historialCompleto: !rViejas || !rViejas.results[0]?.n,
   };
 }
 
@@ -101,23 +117,31 @@ export async function ultimoCambio(db, me) {
 }
 
 // ── IMÁGENES DE UN MENSAJE ─────────────────────────────────
-// Acepta dos formatos:
+// Guardadas hay de dos formatos:
 //  - URL completa  → imagen guardada en Cloudflare (http solo en las pruebas locales)
 //  - id de Drive   → imagen de cuando el servidor era Apps Script
-export function imagenesValidas(raw) {
+const ID_DRIVE = /^[\w-]{20,60}$/;
+
+function listaDe(raw) {
   let arr = raw;
   if (typeof raw === 'string') {
     try { arr = JSON.parse(raw); } catch { return []; }
   }
-  if (!Array.isArray(arr)) return [];
-  return arr
-    .filter((u) => typeof u === 'string' && (/^https?:\/\/[^\s"'<>]+$/.test(u) || /^[\w-]{20,60}$/.test(u)))
+  return Array.isArray(arr) ? arr.filter((u) => typeof u === 'string') : [];
+}
+
+// Lo que se acepta en un mensaje nuevo: solo fotos subidas a este servidor
+// (o ids de Drive). Si no, cualquiera podría hacer que el navegador de
+// Planet cargue una dirección de afuera al abrir la consulta.
+export function imagenesValidas(raw, origen) {
+  const base = origen + '/img/';
+  return listaDe(raw)
+    .filter((u) => (origen && u.startsWith(base) && esClaveDeImagen(u.slice(base.length))) || ID_DRIVE.test(u))
     .slice(0, MAX_IMAGENES);
 }
 
 function leerImagenes(json) {
-  if (!json) return [];
-  try { return imagenesValidas(JSON.parse(json)); } catch { return []; }
+  return listaDe(json || '[]').filter((u) => /^https?:\/\/[^\s"'<>]+$/.test(u) || ID_DRIVE.test(u)).slice(0, MAX_IMAGENES);
 }
 
 // ── EVENTOS (para las métricas) ────────────────────────────
@@ -136,7 +160,7 @@ function insertarMensaje(db, { consultaId, me, fecha, texto: t, imgs, cuando }) 
 }
 
 // ── CREAR ──────────────────────────────────────────────────
-export async function nuevaConsulta(db, me, p) {
+export async function nuevaConsulta(db, me, p, origen) {
   const asunto = texto(p.asunto, MAX_ASUNTO);
   const mensaje = texto(p.mensaje, MAX_MENSAJE);
   const cliente = esPlanet(me) ? texto(p.cliente, 100) : me.cliente;
@@ -155,7 +179,7 @@ export async function nuevaConsulta(db, me, p) {
 
   const id = res.meta.last_row_id;
   await db.batch([
-    insertarMensaje(db, { consultaId: id, me, fecha, texto: mensaje, imgs: imagenesValidas(p.imagenes), cuando: ahora }),
+    insertarMensaje(db, { consultaId: id, me, fecha, texto: mensaje, imgs: imagenesValidas(p.imagenes, origen), cuando: ahora }),
     anotarEvento(db, { consultaId: id, evento: 'creada', a: estado, me, cuando: ahora }),
   ]);
   return ok({ id });
@@ -168,9 +192,9 @@ export async function nuevaConsulta(db, me, p) {
 //  - El cliente responde                → Respuesta cliente (salvo que siga Abierta)
 //  - Cualquiera escribe en una cerrada  → se reabre (Planet: En proceso · cliente: Abierto)
 // accion: lo que eligió Planet al mandar el mensaje ('' | 'info' | 'cerrar').
-// Un mensaje en una cerrada siempre la reabre, aunque venga con acción.
+// "Enviar y cerrar" sobre una que ya cerró un compañero la deja cerrada.
 export function estadoTrasMensaje(estado, planet, accion) {
-  if (estado === 'Cerrado') return planet ? 'En proceso' : 'Abierto';
+  if (estado === 'Cerrado') return !planet ? 'Abierto' : accion === 'cerrar' ? 'Cerrado' : 'En proceso';
   if (!planet) return estado === 'Abierto' ? estado : 'Respuesta cliente';
   if (accion === 'cerrar') return 'Cerrado';
   if (accion === 'info') return 'Esperando info';
@@ -178,10 +202,22 @@ export function estadoTrasMensaje(estado, planet, accion) {
   return estado;
 }
 
-export async function responder(db, me, p) {
+// Antes de cerrar: ¿el cliente escribió algo que quien cierra todavía no vio?
+// "visto" es la versión de la consulta que Planet tiene en pantalla. Sin esto
+// se podía cerrar una consulta tapando un mensaje del cliente sin leer.
+const AVISO_SIN_LEER = 'El cliente escribió un mensaje nuevo en esta consulta. Leelo antes de cerrarla.';
+async function hayMensajeSinLeer(db, id, visto) {
+  const v = Number(visto);
+  if (!v) return false;   // el portal no avisó qué versión tiene: no se controla
+  return !!(await db.prepare(
+    `SELECT 1 FROM mensajes WHERE consulta_id = ? AND equipo = 'cliente' AND creado_en > ? LIMIT 1`
+  ).bind(id, v).first());
+}
+
+export async function responder(db, me, p, origen) {
   const id = idValido(p.id);
   const t = texto(p.texto, MAX_MENSAJE);
-  const imgs = imagenesValidas(p.imagenes);
+  const imgs = imagenesValidas(p.imagenes, origen);
   if (!id || (!t && !imgs.length)) return err('Faltan campos');
 
   const c = await db.prepare('SELECT * FROM consultas WHERE id = ?').bind(id).first();
@@ -189,33 +225,34 @@ export async function responder(db, me, p) {
   if (!c || (!esPlanet(me) && c.cliente !== me.cliente)) return err('Consulta no encontrada');
 
   const ahora = Date.now();
-  const reabre = c.estado === 'Cerrado';
   // Solo Planet puede pedir info o cerrar al mandar el mensaje
   const accion = !esPlanet(me) ? '' : esVerdadero(p.cerrar) ? 'cerrar' : esVerdadero(p.esperar_info) ? 'info' : '';
   const nuevo = estadoTrasMensaje(c.estado, esPlanet(me), accion);
+  const reabre = c.estado === 'Cerrado' && nuevo !== 'Cerrado';
+  if (nuevo === 'Cerrado' && c.estado !== 'Cerrado' && await hayMensajeSinLeer(db, id, p.visto)) {
+    return { ok: false, novedad: true, error: AVISO_SIN_LEER };
+  }
+
+  // Estado, hora de cierre y demás van en un solo cambio: aunque dos personas
+  // escriban a la vez, la consulta no queda "abierta pero con hora de cierre".
+  // Al cerrar queda la hora exacta, igual que con el botón de Cerrar.
+  const cerradoEn = nuevo !== 'Cerrado' ? null : c.estado === 'Cerrado' ? c.cerrado_en : ahora;
+  // El primero de Planet que la mueve queda como quien la atiende
+  const atiende = esPlanet(me) && nuevo !== c.estado && !c.atendido_por ? me.nombre : c.atendido_por || '';
   const ops = [
     insertarMensaje(db, { consultaId: id, me, fecha: ahoraAR(false, ahora), texto: t, imgs, cuando: ahora }),
     anotarEvento(db, { consultaId: id, evento: 'mensaje', de: c.estado, me, cuando: ahora }),
-    db.prepare('UPDATE consultas SET actualizado = ? WHERE id = ?').bind(ahora, id),
+    db.prepare(
+      `UPDATE consultas SET actualizado = ?, estado = ?, cerrado_en = ?, atendido_por = ?,
+              reabierta_en = CASE WHEN ? THEN ? ELSE reabierta_en END,
+              reaberturas = reaberturas + ?
+       WHERE id = ?`
+    ).bind(ahora, nuevo, cerradoEn, atiende, reabre ? 1 : 0, ahora, reabre ? 1 : 0, id),
   ];
   if (reabre) {
-    ops.push(
-      db.prepare('UPDATE consultas SET cerrado_en = NULL, reabierta_en = ?, reaberturas = reaberturas + 1 WHERE id = ?').bind(ahora, id),
-      anotarEvento(db, { consultaId: id, evento: 'reabierta', de: 'Cerrado', a: nuevo, me, cuando: ahora })
-    );
+    ops.push(anotarEvento(db, { consultaId: id, evento: 'reabierta', de: 'Cerrado', a: nuevo, me, cuando: ahora }));
   } else if (nuevo !== c.estado) {
     ops.push(anotarEvento(db, { consultaId: id, evento: 'estado', de: c.estado, a: nuevo, me, cuando: ahora }));
-  }
-  if (nuevo !== c.estado) {
-    ops.push(db.prepare('UPDATE consultas SET estado = ? WHERE id = ?').bind(nuevo, id));
-  }
-  // Al cerrar queda la hora exacta, igual que con el botón de Cerrar
-  if (nuevo === 'Cerrado' && c.estado !== 'Cerrado') {
-    ops.push(db.prepare('UPDATE consultas SET cerrado_en = ? WHERE id = ?').bind(ahora, id));
-  }
-  // El primero de Planet que la mueve queda como quien la atiende
-  if (esPlanet(me) && nuevo !== c.estado && !c.atendido_por) {
-    ops.push(db.prepare('UPDATE consultas SET atendido_por = ? WHERE id = ?').bind(me.nombre, id));
   }
   await db.batch(ops);
   return ok({ reabierta: reabre, estado: nuevo });
@@ -230,6 +267,9 @@ export async function cambiarEstado(db, me, p) {
   const antes = await db.prepare('SELECT estado, atendido_por FROM consultas WHERE id = ?').bind(id).first();
   if (!antes) return err('Consulta no encontrada');
   if (antes.estado === estado) return ok({});   // nada que cambiar (y no pisa la hora de cierre)
+  if (estado === 'Cerrado' && await hayMensajeSinLeer(db, id, p.visto)) {
+    return { ok: false, novedad: true, error: AVISO_SIN_LEER };
+  }
 
   const ahora = Date.now();
   const reabre = antes.estado === 'Cerrado';

@@ -206,7 +206,7 @@ function tarjetaPlanet(c) {
       <div class="img-previews thread-previews" id="prev-p${c.id}">${previasHtml('p' + c.id)}</div>
       <div class="thread-reply-bar">
         <button type="button" class="attach-btn" onclick="elegirImagenes('p${c.id}')" title="Adjuntar fotos">${CLIP_ICON}</button>
-        <input class="thread-reply-input" placeholder="${textoRespuesta(grupo, false)}" id="preply-${c.id}" onkeydown="if(event.key==='Enter')responderPlanet(${c.id}, '', this.nextElementSibling)">
+        <input class="thread-reply-input" maxlength="${MAX_MENSAJE}" placeholder="${textoRespuesta(grupo, false)}" id="preply-${c.id}" value="${borrador('preply-' + c.id)}" onkeydown="if(event.key==='Enter')responderPlanet(${c.id}, '', this.nextElementSibling)">
         <button class="thread-reply-btn" onclick="responderPlanet(${c.id}, '', this)" title="${cerrada ? 'Envía el mensaje y reabre la consulta' : 'Envía el mensaje; la consulta queda En proceso'}">${cerrada ? 'Enviar y reabrir' : 'Enviar'}</button>
         ${cerrada ? '' : `
         <button class="thread-reply-btn btn-wait" onclick="responderPlanet(${c.id}, 'info', this)" title="Envía el mensaje y pasa la consulta a Esperando info">Enviar y pedir info</button>
@@ -247,6 +247,20 @@ function tarjetaPlanet(c) {
 }
 
 // ── RESPONDER Y CAMBIAR ESTADO ──
+// Al cerrar se le avisa al servidor qué versión de la consulta hay en pantalla:
+// si el cliente escribió después, no la cierra y nos muestra el mensaje nuevo.
+function versionVista(id) {
+  const c = consultas.find(x => String(x.id) === String(id));
+  return c ? c.actualizado : 0;
+}
+// El servidor frenó un cierre porque hay un mensaje del cliente sin leer:
+// se trae lo nuevo (lo que se estaba escribiendo queda, es un borrador)
+async function mostrarNovedad(res, id) {
+  toast(res.error, { tipo: 'warn', titulo: 'Hay un mensaje nuevo' });
+  await refrescar();
+  if ($('tcard-' + id)) { resaltar($('tcard-' + id)); alFinalDeLosMensajes($('tcard-' + id)); }
+}
+
 // accion: '' (responder) | 'info' (y pedir info) | 'cerrar' (y cerrarla)
 async function responderPlanet(id, accion, btn) {
   const input = $('preply-' + id);
@@ -258,6 +272,7 @@ async function responderPlanet(id, accion, btn) {
       : accion === 'cerrar' ? 'Escribí el mensaje con el que la cerrás' : 'Escribí un mensaje');
     sacudir(input); input.focus(); return;
   }
+  if (muyLargo(texto, MAX_MENSAJE, 'El mensaje')) return;
   const cardId = 'tcard-' + id;
   input.disabled = true;
   const listo = ocupado(btn, 'Enviando...');
@@ -269,12 +284,14 @@ async function responderPlanet(id, accion, btn) {
   const params = { action: 'responder', id, texto };
   if (imagenes.length) params.imagenes = imagenes;
   if (accion === 'info') params.esperar_info = '1';
-  if (accion === 'cerrar') params.cerrar = '1';
+  if (accion === 'cerrar') { params.cerrar = '1'; params.visto = versionVista(id); }
   const res = await api(params);
   terminar();
 
+  if (res.novedad) return mostrarNovedad(res, id);
   if (!res.ok) return toast('Error: ' + (res.error || 'No se pudo enviar') + ' — tocá ↻ antes de reenviar');
   input.value = '';
+  olvidarBorrador('preply-' + id);
   olvidarImagenes(clave);
   toast(res.reabierta ? '🔄 Consulta reabierta'
     : accion === 'cerrar' ? '✓ Mensaje enviado · Consulta cerrada'
@@ -282,7 +299,8 @@ async function responderPlanet(id, accion, btn) {
     : '✓ Mensaje enviado');
   aplicarLocal(id, { estado: res.estado, atendido_por: sesion.nombre },
     { autor: sesion.usuario, nombre: sesion.nombre, fecha: ahoraTexto(), texto, imagenes });
-  pintarPlanet();
+  pintar();
+  alFinalDeLosMensajes($(cardId));
   refrescar();
 }
 
@@ -290,13 +308,16 @@ async function cambiarEstado(id, estado, btn) {
   const cardId = 'tcard-' + id;
   const listo = ocupado(btn, estado === 'Cerrado' ? 'Cerrando...' : 'Guardando...');
   tarjetaOcupada(cardId, true);
-  const res = await api({ action: 'cambiar_estado', id, estado });
+  const params = { action: 'cambiar_estado', id, estado };
+  if (estado === 'Cerrado') params.visto = versionVista(id);
+  const res = await api(params);
   tarjetaOcupada(cardId, false);
   listo();
+  if (res.novedad) return mostrarNovedad(res, id);
   if (!res.ok) return toast('Error: ' + (res.error || 'No se pudo cambiar'));
   toast('✓ Estado cambiado a ' + GRUPOS[grupoPlanet(estado)].label);
   aplicarLocal(id, { estado, atendido_por: sesion.nombre });
-  pintarPlanet();
+  pintar();
   refrescar();
 }
 
@@ -341,6 +362,7 @@ async function enviarNuevaConsultaPlanet() {
     sacudirVacios(['pnq-cliente', 'pnq-ref', 'pnq-tipo', 'pnq-mensaje']);
     return;
   }
+  if (muyLargo(referencia, MAX_REFERENCIA, 'El tracking o referencia') || muyLargo(mensaje, MAX_MENSAJE, 'El mensaje')) return;
   const btn = $('pnq-send');
   if (btn.disabled) return;
   const listo = ocupado(btn, 'Enviando...');

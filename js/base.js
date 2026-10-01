@@ -38,11 +38,15 @@ function normalizar(t) {
 // Guardado local del navegador: si está bloqueado (modo privado), el portal sigue andando igual
 const local = {
   leer(clave, siNo = null) {
-    try { const v = localStorage.getItem(clave); return v === null ? siNo : JSON.parse(v); } catch (e) { return siNo; }
+    try { const v = localStorage.getItem(clave); return v === null ? siNo : JSON.parse(v); }
+    catch (e) { return clave in _memoria ? _memoria[clave] : siNo; }
   },
-  guardar(clave, valor) { try { localStorage.setItem(clave, JSON.stringify(valor)); } catch (e) {} },
-  borrar(clave) { try { localStorage.removeItem(clave); } catch (e) {} }
+  guardar(clave, valor) { try { localStorage.setItem(clave, JSON.stringify(valor)); } catch (e) { _memoria[clave] = valor; } },
+  borrar(clave) { try { localStorage.removeItem(clave); } catch (e) {} delete _memoria[clave]; }
 };
+// Si el guardado está bloqueado, al menos se recuerda mientras la página esté
+// abierta (si no, la guía de bienvenida volvía a salir una y otra vez)
+const _memoria = {};
 
 // ── FECHAS ──
 const HORA_MS = 3600000;
@@ -57,14 +61,19 @@ function fechaMs(f) {
   const s = String(f == null ? '' : f).trim();
   const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4}|\d{2})(?:[ ,T]+(\d{1,2}):(\d{2}))?$/);
   let ms = 0;
-  if (m) ms = new Date(m[3].length === 2 ? 2000 + +m[3] : +m[3], +m[2] - 1, +m[1], +(m[4] || 0), +(m[5] || 0)).getTime();
+  // Las fechas escritas son siempre hora de Argentina (UTC-3, sin horario de
+  // verano), esté donde esté el dispositivo: si no, a alguien de viaje se le
+  // corrían las antigüedades y el orden.
+  if (m) ms = Date.UTC(m[3].length === 2 ? 2000 + +m[3] : +m[3], +m[2] - 1, +m[1], +(m[4] || 0) + 3, +(m[5] || 0));
   else if (/^\d{4}-\d{2}-\d{2}/.test(s)) ms = new Date(s).getTime();
   return fechaValida(ms) ? ms : 0;
 }
 
 const _dos = n => String(n).padStart(2, '0');
+// Fecha y hora de Argentina, como las escribe el servidor
 function textoFecha(d) {
-  return `${_dos(d.getDate())}/${_dos(d.getMonth() + 1)}/${d.getFullYear()} ${_dos(d.getHours())}:${_dos(d.getMinutes())}`;
+  const ar = new Date(d.getTime() - 3 * HORA_MS);
+  return `${_dos(ar.getUTCDate())}/${_dos(ar.getUTCMonth() + 1)}/${ar.getUTCFullYear()} ${_dos(ar.getUTCHours())}:${_dos(ar.getUTCMinutes())}`;
 }
 function ahoraTexto() { return textoFecha(new Date()); }
 

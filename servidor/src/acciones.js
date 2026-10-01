@@ -42,8 +42,8 @@ const ACCIONES = {
 
   consultas: { acceso: 'usuario', fn: async ({ db, me, p }) => ok(await paquete(db, me, p)) },
   novedades: { acceso: 'usuario', fn: async ({ db, me }) => ok({ ultimo: await ultimoCambio(db, me) }) },
-  nueva_consulta: { acceso: 'usuario', fn: ({ db, me, p }) => nuevaConsulta(db, me, p) },
-  responder: { acceso: 'usuario', fn: ({ db, me, p }) => responder(db, me, p) },
+  nueva_consulta: { acceso: 'usuario', fn: ({ db, me, p, ctx }) => nuevaConsulta(db, me, p, ctx.origen) },
+  responder: { acceso: 'usuario', fn: ({ db, me, p, ctx }) => responder(db, me, p, ctx.origen) },
   subir_imagen: { acceso: 'usuario', fn: ({ env, p, ctx }) => subirImagen(env, p, ctx.origen) },
 
   cambiar_estado: { acceso: 'planet', fn: ({ db, me, p }) => cambiarEstado(db, me, p) },

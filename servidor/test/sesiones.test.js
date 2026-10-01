@@ -20,11 +20,28 @@ describe('login', () => {
     expect(r2.error).toBe(r.error);
   });
 
-  it('bloquea 15 minutos después de 8 intentos fallidos, aunque cambie de IP', async () => {
+  it('bloquea 15 minutos después de 8 intentos fallidos desde la misma conexión', async () => {
     await crearUsuario('nico.nume');
-    for (let i = 0; i < 8; i++) await llamar({ action: 'login', usuario: 'nico.nume', password: 'mal' + i });
-    const r = await llamar({ action: 'login', usuario: 'nico.nume', password: 'clave123' });
+    const desdeIp = '9.9.9.9';
+    for (let i = 0; i < 8; i++) await llamar({ action: 'login', usuario: 'nico.nume', password: 'mal' + i }, { desdeIp });
+    const r = await llamar({ action: 'login', usuario: 'nico.nume', password: 'clave123' }, { desdeIp });
     expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/Demasiados intentos/);
+  });
+
+  it('nadie puede dejar afuera a otro errando su contraseña a propósito', async () => {
+    await crearUsuario('nico.nume');
+    for (let i = 0; i < 20; i++) await llamar({ action: 'login', usuario: 'nico.nume', password: 'mal' }, { desdeIp: '6.6.6.6' });
+    // El dueño de la cuenta, desde su conexión, entra normal
+    expect((await llamar({ action: 'login', usuario: 'nico.nume', password: 'clave123' }, { desdeIp: '7.7.7.7' })).ok).toBe(true);
+  });
+
+  it('un ataque desde muchas conexiones a la vez también se frena', async () => {
+    await crearUsuario('nico.nume');
+    const ahora = Date.now();
+    const filas = Array.from({ length: 100 }, () => db.prepare("INSERT INTO intentos_login (clave, cuando) VALUES ('u:nico.nume', ?)").bind(ahora));
+    await db.batch(filas);
+    const r = await llamar({ action: 'login', usuario: 'nico.nume', password: 'clave123' });
     expect(r.error).toMatch(/Demasiados intentos/);
   });
 
@@ -39,10 +56,14 @@ describe('login', () => {
 
   it('un login correcto limpia los intentos fallidos de ese usuario', async () => {
     await crearUsuario('nico.nume');
-    for (let i = 0; i < 5; i++) await llamar({ action: 'login', usuario: 'nico.nume', password: 'mal' });
-    await entrar('nico.nume');
-    const { n } = await db.prepare("SELECT COUNT(*) n FROM intentos_login WHERE clave = 'u:nico.nume'").first();
+    const desdeIp = '8.8.8.8';
+    for (let i = 0; i < 5; i++) await llamar({ action: 'login', usuario: 'nico.nume', password: 'mal' }, { desdeIp });
+    expect((await llamar({ action: 'login', usuario: 'nico.nume', password: 'clave123' }, { desdeIp })).ok).toBe(true);
+    const { n } = await db.prepare("SELECT COUNT(*) n FROM intentos_login WHERE clave LIKE '%nico.nume%'").first();
     expect(n).toBe(0);
+    // Puede volver a equivocarse 7 veces sin quedar bloqueado
+    for (let i = 0; i < 7; i++) await llamar({ action: 'login', usuario: 'nico.nume', password: 'mal' }, { desdeIp });
+    expect((await llamar({ action: 'login', usuario: 'nico.nume', password: 'clave123' }, { desdeIp })).ok).toBe(true);
   });
 
   it('sigue aceptando pedidos por GET (versión anterior del portal)', async () => {

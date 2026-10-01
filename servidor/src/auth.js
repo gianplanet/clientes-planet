@@ -6,10 +6,13 @@ import { texto } from './util.js';
 const PBKDF2_ITERACIONES = 100000;
 const SESION_MS = 30 * 24 * 3600000;
 
-// Límite de intentos fallidos en una ventana de 15 minutos
+// Límite de intentos fallidos en una ventana de 15 minutos.
+// El bloqueo corto es por usuario Y conexión: si fuera solo por usuario,
+// cualquiera podría dejar afuera a otro errando su contraseña a propósito.
 const VENTANA_INTENTOS_MS = 15 * 60000;
-const MAX_INTENTOS_USUARIO = 8;
-const MAX_INTENTOS_IP = 60;   // alto: todo un cliente puede salir por la misma IP
+const MAX_INTENTOS_USUARIO_IP = 8;
+const MAX_INTENTOS_IP = 60;         // alto: todo un cliente puede salir por la misma IP
+const MAX_INTENTOS_USUARIO = 100;   // desde muchas conexiones a la vez: es un ataque
 
 export const esPlanet = (u) => !!u && u.team === 'planet';
 export const esAdmin = (u) => esPlanet(u) && u.role === 'admin';
@@ -60,6 +63,7 @@ async function crearSesion(db, usuario) {
 export async function usuarioDeSesion(db, token) {
   if (!token) return null;
   return db.prepare(
+    // lower(u.usuario) tiene índice propio: sin él, cada pedido leía todos los usuarios
     `SELECT u.* FROM sesiones s
      JOIN usuarios u ON lower(u.usuario) = lower(s.usuario)
      WHERE s.token = ? AND s.expira > ?`
@@ -78,13 +82,15 @@ export async function login(db, p, ctx) {
   if (!usuario || !password) return { error: err('Faltan credenciales') };
 
   const ahora = Date.now();
-  const claves = ['u:' + usuario, 'ip:' + (ctx.ip || '?')];
+  const ip = ctx.ip || '?';
+  const claves = ['ui:' + usuario + '|' + ip, 'ip:' + ip, 'u:' + usuario];
+  const topes = [MAX_INTENTOS_USUARIO_IP, MAX_INTENTOS_IP, MAX_INTENTOS_USUARIO];
   const { results: intentos } = await db.prepare(
     `SELECT clave, COUNT(*) AS n FROM intentos_login
-     WHERE clave IN (?, ?) AND cuando > ? GROUP BY clave`
+     WHERE clave IN (?, ?, ?) AND cuando > ? GROUP BY clave`
   ).bind(...claves, ahora - VENTANA_INTENTOS_MS).all();
   const cuenta = (c) => intentos.find((i) => i.clave === c)?.n || 0;
-  if (cuenta(claves[0]) >= MAX_INTENTOS_USUARIO || cuenta(claves[1]) >= MAX_INTENTOS_IP) {
+  if (claves.some((c, i) => cuenta(c) >= topes[i])) {
     return { error: err('Demasiados intentos fallidos. Esperá 15 minutos y probá de nuevo.') };
   }
 
@@ -98,7 +104,7 @@ export async function login(db, p, ctx) {
   // Limpieza de lo vencido, aprovechando que alguien entró
   await db.batch([
     db.prepare('DELETE FROM sesiones WHERE expira < ?').bind(ahora),
-    db.prepare('DELETE FROM intentos_login WHERE cuando < ? OR clave = ?').bind(ahora - VENTANA_INTENTOS_MS, claves[0]),
+    db.prepare('DELETE FROM intentos_login WHERE cuando < ? OR clave IN (?, ?)').bind(ahora - VENTANA_INTENTOS_MS, claves[0], claves[2]),
   ]);
   const token = await crearSesion(db, String(user.usuario).toLowerCase());
   return { user, token };

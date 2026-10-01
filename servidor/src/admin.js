@@ -40,7 +40,8 @@ export async function crearUsuario(db, p) {
 export async function editarUsuario(db, me, p) {
   const usuario = texto(p.usuario, 100).toLowerCase();
   if (!usuario) return err('Falta usuario');
-  if (!(await existeUsuario(db, usuario))) return err('Usuario no encontrado');
+  const actual = await db.prepare('SELECT team, cliente, role FROM usuarios WHERE lower(usuario) = ?').bind(usuario).first();
+  if (!actual) return err('Usuario no encontrado');
 
   const cambios = {};
   if (texto(p.nombre, 100)) cambios.nombre = texto(p.nombre, 100);
@@ -50,6 +51,13 @@ export async function editarUsuario(db, me, p) {
   else if (texto(p.cliente, 100)) cambios.cliente = texto(p.cliente, 100);
   const password = texto(p.password, 200);
   if (password) cambios.password_hash = await hashPassword(password);
+
+  const final = { ...actual, ...cambios };
+  if (final.team === 'cliente' && (!final.cliente || final.cliente === '-')) return err('Falta la empresa del cliente');
+  // Si el único admin se saca el permiso, nadie más puede administrar el portal
+  if (usuario === String(me.usuario).toLowerCase() && (final.team !== 'planet' || final.role !== 'admin')) {
+    return err('No podés quitarte a vos mismo el permiso de administrador');
+  }
 
   const cols = Object.keys(cambios);   // nombres fijos, no vienen del usuario
   if (!cols.length) return ok();

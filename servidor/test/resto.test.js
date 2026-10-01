@@ -133,6 +133,18 @@ describe('administración', () => {
     expect((await admin({ action: 'eliminar_usuario', usuario: 'nadie' })).error).toBe('Usuario no encontrado');
   });
 
+  it('no deja a un cliente sin empresa ni al admin sin su permiso', async () => {
+    const { admin } = await escenario();
+    expect((await admin({ action: 'editar_usuario', usuario: 'beto.planet', team: 'cliente' })).error).toMatch(/empresa/);
+    expect((await admin({ action: 'editar_usuario', usuario: 'beto.planet', team: 'cliente', cliente: 'GETBOX' })).ok).toBe(true);
+    expect(await db.prepare("SELECT team, cliente FROM usuarios WHERE usuario = 'beto.planet'").first()).toEqual({ team: 'cliente', cliente: 'GETBOX' });
+    for (const cambio of [{ role: 'user' }, { team: 'cliente', cliente: 'NUME' }]) {
+      expect((await admin({ action: 'editar_usuario', usuario: 'ana.planet', ...cambio })).error).toMatch(/administrador/);
+    }
+    expect((await admin({ action: 'editar_usuario', usuario: 'ana.planet', nombre: 'Ana María' })).ok).toBe(true);
+    expect((await admin({ action: 'usuarios' })).ok).toBe(true);
+  });
+
   it('clientes: crear, editar, listar y eliminar', async () => {
     const { admin, planet } = await escenario();
     const { id } = await admin({ action: 'crear_cliente', nombre: ' NUME ', email: 'a@b.c' });
@@ -165,6 +177,7 @@ describe('imágenes', () => {
     expect((await nume({ action: 'subir_imagen', mime: 'text/html', data: 'PGI+' })).error).toBe('Solo se pueden subir imágenes');
     expect((await nume({ action: 'subir_imagen', mime: 'image/png' })).error).toBe('Falta la imagen');
     expect((await worker.fetch(new Request('https://portal.test/img/migracion_metricas_v4'), env)).status).toBe(404);
+    expect((await worker.fetch(new Request('https://portal.test/img/%E0%A4%A'), env)).status).toBe(404);
   });
 
   it('sin sesión no se puede subir', async () => {

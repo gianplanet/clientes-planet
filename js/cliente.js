@@ -203,7 +203,7 @@ function tarjetaCliente(c) {
       <div class="img-previews reply-previews" id="prev-c${c.id}">${previasHtml('c' + c.id)}</div>
       <div class="reply-box">
         <button type="button" class="attach-btn" onclick="elegirImagenes('c${c.id}')" title="Adjuntar fotos">${CLIP_ICON}</button>
-        <input type="text" placeholder="${textoRespuesta(grupo, true)}" id="reply-${c.id}" onkeydown="if(event.key==='Enter')responderCliente(${c.id}, this.nextElementSibling)">
+        <input type="text" maxlength="${MAX_MENSAJE}" placeholder="${textoRespuesta(grupo, true)}" id="reply-${c.id}" value="${borrador('reply-' + c.id)}" onkeydown="if(event.key==='Enter')responderCliente(${c.id}, this.nextElementSibling)">
         <button class="reply-send" onclick="responderCliente(${c.id}, this)" title="Enviar">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
         </button>
@@ -225,6 +225,7 @@ async function responderCliente(id, btn) {
   const clave = 'c' + id;
   if (input.disabled) return;
   if (!texto && !hayImagenes(clave)) { sacudir(input); input.focus(); return; }
+  if (muyLargo(texto, MAX_MENSAJE, 'El mensaje')) return;
   input.disabled = true;
   await volarAvion(btn);
   const listo = ocupado(btn);
@@ -240,10 +241,15 @@ async function responderCliente(id, btn) {
 
   if (!res.ok) return toast('Error: ' + (res.error || 'No se pudo enviar') + ' — tocá ↻ antes de reenviar');
   input.value = '';
+  olvidarBorrador('reply-' + id);
   olvidarImagenes(clave);
   toast(res.reabierta ? '🔄 Consulta reabierta' : '✓ Mensaje enviado');
   aplicarLocal(id, { estado: res.estado }, { autor: sesion.usuario, nombre: sesion.nombre, fecha: ahoraTexto(), texto, imagenes });
-  pintarCliente();
+  // Si al responder la consulta cambia de solapa, vamos con ella: si no,
+  // desaparece de la vista y parece que el mensaje se perdió
+  if (clientTabEstado['client-list'] && clientTabEstado['client-list'] !== 'Todos') clientTabEstado['client-list'] = grupoCliente(res.estado);
+  pintar();
+  alFinalDeLosMensajes($('card-' + id));
   refrescar();
 }
 
@@ -266,6 +272,7 @@ async function enviarNuevaConsultaCliente() {
     sacudirVacios(['nq-ref', 'nq-tipo', 'nq-mensaje']);
     return;
   }
+  if (muyLargo(referencia, MAX_REFERENCIA, 'El tracking o referencia') || muyLargo(mensaje, MAX_MENSAJE, 'El mensaje')) return;
   const btn = $('nq-send');
   if (btn.disabled) return;
   const listo = ocupado(btn, 'Enviando...');
@@ -315,11 +322,11 @@ function marcarCierreVisto(id) {
 }
 function marcarTodosLosCierresVistos() {
   consultas.filter(cerradaHacePoco).forEach(c => marcarCierreVisto(c.id));
-  pintarCliente();
+  pintar();
 }
 function cierreVistoAlAbrir(id) {
   const c = consultas.find(x => String(x.id) === String(id));
-  if (c && cerradaHacePoco(c) && marcarCierreVisto(id)) setTimeout(pintarCliente, 1200);
+  if (c && cerradaHacePoco(c) && marcarCierreVisto(id)) setTimeout(pintar, 1200);
 }
 function cerradaHacePoco(c) {
   if (c.estado !== 'Cerrado' || !fechaValida(Number(c.cerrado_en)) || c.cierre_aprox) return false;
