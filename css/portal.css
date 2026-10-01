@@ -939,6 +939,36 @@ body {
 .etiqueta.planet { background: var(--info-bg); color: var(--info-text); }
 .etiqueta.cliente { background: var(--success-bg); color: var(--success-text); }
 .etiqueta.admin { background: var(--warning-bg); color: var(--warning-text); }
+/* ── USUARIOS AGRUPADOS POR EMPRESA ── */
+.grupo-usuarios {
+  background: var(--card); border: 1px solid var(--card-border);
+  border-radius: var(--radius); overflow: hidden; margin-bottom: 10px;
+}
+.grupo-cab {
+  display: flex; align-items: center; gap: 10px; padding: 11px 14px; cursor: pointer;
+}
+.grupo-usuarios.abierto .grupo-cab { border-bottom: 1px solid var(--card-border); }
+.grupo-cab .card-chevron { order: -1; margin-left: 0; flex-shrink: 0; }
+.grupo-usuarios.abierto .grupo-cab .card-chevron { transform: rotate(180deg); }
+.grupo-nombre { font-size: 14px; font-weight: 600; }
+.grupo-cuenta { font-size: 12px; color: var(--text-muted); }
+.grupo-usuarios.vacio .grupo-nombre { font-weight: 500; color: var(--text-muted); }
+.grupo-agregar { margin-left: auto; }
+.grupo-usuarios.vacio .card-chevron { visibility: hidden; }
+.fila-usuario { display: flex; align-items: center; gap: 10px; padding: 10px 14px; }
+.fila-usuario + .fila-usuario { border-top: 1px solid var(--card-border); }
+.fila-avatar {
+  width: 30px; height: 30px; border-radius: 50%; color: #fff; flex-shrink: 0;
+  display: grid; place-items: center; font-size: 13px; font-weight: 600;
+}
+.fila-datos { flex: 1; min-width: 0; }
+.fila-datos .nombre { font-size: 14px; }
+.fila-datos .usuario { font-size: 12px; color: var(--text-muted); }
+.fila-acciones { display: flex; gap: 6px; flex-shrink: 0; }
+.fila-usuario.editando { display: block; background: var(--surface); }
+.fila-usuario.editando .quien { font-size: 13px; font-weight: 600; margin-bottom: 10px; }
+.fila-usuario.editando .admin-grid { margin-bottom: 10px; }
+
 .cliente-ficha { background: var(--card); border: 1px solid var(--card-border); border-radius: var(--radius); padding: 16px; }
 .cliente-ficha + .cliente-ficha { margin-top: 12px; }
 .cliente-ficha-top { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px; }

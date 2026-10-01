@@ -288,8 +288,11 @@ function olvidarPantalla() {
   document.querySelectorAll('.sidebar-item').forEach(b => b.classList.toggle('active', b.dataset.seccion === 'planet-consultas'));
   document.querySelectorAll('#screen-planet .planet-sub').forEach(s => s.classList.toggle('active', s.id === 'planet-consultas'));
   Object.keys(borradores).forEach(k => delete borradores[k]);
-  ['client-search', 'planet-search'].forEach(id => { $(id).value = ''; $(id).closest('.search-row').classList.remove('con-texto'); });
-  busquedaCliente = busquedaPlanet = '';
+  ['client-search', 'planet-search', 'users-search'].forEach(id => { $(id).value = ''; $(id).closest('.search-row').classList.remove('con-texto'); });
+  busquedaCliente = busquedaPlanet = busquedaUsuarios = '';
+  usuariosCargados = [];
+  usuarioEditando = null;
+  Object.keys(grupoTocado).forEach(k => delete grupoTocado[k]);
   filtroCliente = 'Todos';
   filtroEstado = 'pendiente';
   if (_guia) { _guia.root.remove(); _guia = null; }

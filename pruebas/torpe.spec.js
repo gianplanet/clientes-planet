@@ -628,7 +628,7 @@ test('si antes entró un admin, el siguiente usuario no queda parado en su panta
   const page = await ventana(browser);
   await entrar(page, 'ana.planet');
   await page.click('.sidebar-item[data-seccion="planet-usuarios"]');
-  await expect(page.locator('.tabla-admin')).toContainText('nico.nume');
+  await expect(page.locator('#users-list')).toContainText('nico.nume');
   await page.click('.sidebar-item[data-seccion="planet-metricas"]');
   await expect(page.locator('#met-contenido .met-tile').first()).toBeVisible();
   await page.locator('#screen-planet .topbar-actions button[title="Salir"]').click();

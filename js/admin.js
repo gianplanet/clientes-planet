@@ -6,7 +6,14 @@ function mostrarOcultar(id) {
 }
 
 // ── USUARIOS ──
+// Van agrupados por empresa (y el equipo de Planet primero): con 40 clientes
+// una lista sola se vuelve imposible de mirar.
 let usuarioEditando = null;
+let usuariosCargados = [];
+let busquedaUsuarios = '';
+const grupoTocado = {};          // los que el admin abrió o cerró a mano
+const POCAS_EMPRESAS = 6;        // hasta acá arrancan abiertas
+let _pocasEmpresas = true;
 
 function mostrarCampoEmpresa() {
   $('nu-empresa-wrap').hidden = $('nu-team').value !== 'cliente';
@@ -17,50 +24,134 @@ async function cargarUsuarios() {
   cont.innerHTML = esqueletoHtml(3);
   const res = await api({ action: 'usuarios' });
   if (!res.ok) { cont.innerHTML = '<div class="empty-state"><p>Error cargando usuarios</p></div>'; return; }
-  if (!res.usuarios.length) { cont.innerHTML = '<div class="empty-state"><p>No hay usuarios</p></div>'; return; }
-  cont.innerHTML = `
-    <div class="tabla-scroll"><table class="tabla-admin">
-      <thead><tr><th>Usuario</th><th>Nombre</th><th>Equipo</th><th>Empresa</th><th>Rol</th><th></th></tr></thead>
-      <tbody>${res.usuarios.map(u => usuarioEditando === u.usuario ? filaEditandoUsuario(u) : filaUsuario(u)).join('')}</tbody>
-    </table></div>`;
+  usuariosCargados = res.usuarios || [];
+  pintarUsuarios();
+}
+
+function buscarUsuarios(texto) {
+  busquedaUsuarios = texto;
+  const el = $('users-search');
+  if (el.value !== texto) el.value = texto;
+  el.closest('.search-row').classList.toggle('con-texto', !!texto);
+  pintarUsuarios();
+}
+
+// Buscando, se abre todo; si no, Planet siempre y las empresas solo si son pocas
+function grupoAbierto(clave) {
+  if (busquedaUsuarios) return true;
+  if (clave in grupoTocado) return grupoTocado[clave];
+  return clave === 'planet' || _pocasEmpresas;
+}
+function toggleGrupoUsuarios(clave) {
+  grupoTocado[clave] = !grupoAbierto(clave);
+  pintarUsuarios();
+}
+
+function pintarUsuarios() {
+  const cont = $('users-list');
+  if (!usuariosCargados.length) { cont.innerHTML = '<div class="empty-state"><p>No hay usuarios</p></div>'; return; }
+
+  const q = normalizar(busquedaUsuarios);
+  const coincide = u => !q || normalizar([u.usuario, u.nombre, u.cliente].join(' ')).includes(q);
+  const dePlanet = usuariosCargados.filter(u => u.team === 'planet');
+  const deClientes = usuariosCargados.filter(u => u.team !== 'planet');
+
+  // Todas las empresas: las que tienen usuarios y las registradas que no tienen ninguno
+  const empresas = [...new Set(deClientes.map(u => u.cliente || '-')
+    .concat(clientesRegistrados.map(c => c.nombre)))]
+    .filter(n => n && n !== '-')
+    .sort((a, b) => a.localeCompare(b, 'es'));
+  _pocasEmpresas = empresas.length <= POCAS_EMPRESAS;
+
+  const grupos = [grupoUsuarios('planet', 'Equipo Planet', dePlanet, coincide)]
+    .concat(empresas.map(n => grupoUsuarios(n, n, deClientes.filter(u => (u.cliente || '-') === n), coincide)));
+  const sinEmpresa = deClientes.filter(u => !u.cliente || u.cliente === '-');
+  if (sinEmpresa.length) grupos.push(grupoUsuarios('-', 'Sin empresa', sinEmpresa, coincide));
+
+  const html = grupos.filter(Boolean).join('');
+  cont.innerHTML = html || `<div class="empty-state"><p>Ningún usuario coincide con “${esc(busquedaUsuarios)}”</p></div>`;
+}
+
+function grupoUsuarios(clave, titulo, usuarios, coincide) {
+  const visibles = usuarios.filter(coincide);
+  if (busquedaUsuarios && !visibles.length) return '';   // buscando, solo lo que coincide
+  const abierto = grupoAbierto(clave);
+  const n = usuarios.length;
+  const cuenta = n ? `${n} usuario${n === 1 ? '' : 's'}` : 'sin usuarios todavía';
+  const agregar = clave === '-' ? '' :
+    `<button class="btn-chico grupo-agregar" onclick="event.stopPropagation();nuevoUsuarioEn(${jsArg(clave)})">+ Agregar</button>`;
+  return `
+    <div class="grupo-usuarios${abierto ? ' abierto' : ''}${n ? '' : ' vacio'}">
+      <div class="grupo-cab" onclick="toggleGrupoUsuarios(${jsArg(clave)})">
+        <span class="grupo-nombre">${esc(titulo)}</span>
+        <span class="grupo-cuenta">${cuenta}</span>
+        ${agregar}
+        ${CHEVRON}
+      </div>
+      ${abierto && visibles.length ? visibles.map(u => usuarioEditando === u.usuario ? filaEditandoUsuario(u) : filaUsuario(u)).join('') : ''}
+    </div>`;
 }
 
 function filaUsuario(u) {
-  return `<tr>
-    <td><strong>${esc(u.usuario)}</strong></td>
-    <td>${esc(u.nombre)}</td>
-    <td><span class="etiqueta ${u.team === 'planet' ? 'planet' : 'cliente'}">${u.team === 'planet' ? 'Planet' : 'Cliente'}</span></td>
-    <td>${esc(u.cliente || '-')}</td>
-    <td>${u.role === 'admin' ? '<span class="etiqueta admin">Admin</span>' : ''}</td>
-    <td class="acciones">
-      <button class="btn-chico" onclick="editarUsuario(${jsArg(u.usuario)})">✏️ Editar</button>
-      <button class="btn-chico peligro" onclick="eliminarUsuario(${jsArg(u.usuario)}, ${jsArg(u.nombre)})">Eliminar</button>
-    </td>
-  </tr>`;
+  return `
+    <div class="fila-usuario">
+      <div class="fila-avatar" style="background:${avatarColor(u.nombre)}">${esc((u.nombre || '?')[0])}</div>
+      <div class="fila-datos">
+        <div class="nombre">${esc(u.nombre)}</div>
+        <div class="usuario">${esc(u.usuario)}</div>
+      </div>
+      ${u.role === 'admin' ? '<span class="etiqueta admin">Admin</span>' : ''}
+      <div class="fila-acciones">
+        <button class="btn-chico" onclick="editarUsuario(${jsArg(u.usuario)})">Editar</button>
+        <button class="btn-chico peligro" onclick="eliminarUsuario(${jsArg(u.usuario)}, ${jsArg(u.nombre)})">Eliminar</button>
+      </div>
+    </div>`;
 }
 
 function filaEditandoUsuario(u) {
   const opcion = (valor, texto, actual) => `<option value="${esc(valor)}"${valor === actual ? ' selected' : ''}>${esc(texto)}</option>`;
   const empresas = clientesRegistrados.map(c => opcion(c.nombre, c.nombre, u.cliente)).join('');
-  return `<tr class="editando">
-    <td><strong>${esc(u.usuario)}</strong></td>
-    <td><input type="text" id="eu-nombre" value="${esc(u.nombre)}"></td>
-    <td><select id="eu-team" onchange="$('eu-cliente').hidden = this.value !== 'cliente'">
-      ${opcion('planet', 'Planet', u.team)}${opcion('cliente', 'Cliente', u.team)}
-    </select></td>
-    <td><select id="eu-cliente"${u.team === 'cliente' ? '' : ' hidden'}>${empresas}</select></td>
-    <td><select id="eu-role">${opcion('user', 'Usuario', u.role)}${opcion('admin', 'Admin', u.role)}</select></td>
-    <td class="acciones">
-      <input type="text" id="eu-pass" placeholder="Nueva contraseña (opcional)" autocomplete="off">
-      <button class="btn-chico primario" onclick="guardarUsuario(${jsArg(u.usuario)}, this)">Guardar</button>
-      <button class="btn-chico" onclick="editarUsuario(null)">Cancelar</button>
-    </td>
-  </tr>`;
+  return `
+    <div class="fila-usuario editando">
+      <div class="quien">${esc(u.usuario)}</div>
+      <div class="admin-grid">
+        <div class="field"><label>Nombre</label><input type="text" id="eu-nombre" value="${esc(u.nombre)}"></div>
+        <div class="field"><label>Equipo</label>
+          <select id="eu-team" onchange="$('eu-cliente-wrap').hidden = this.value !== 'cliente'">
+            ${opcion('planet', 'Planet', u.team)}${opcion('cliente', 'Cliente', u.team)}
+          </select>
+        </div>
+        <div class="field" id="eu-cliente-wrap"${u.team === 'cliente' ? '' : ' hidden'}><label>Empresa</label>
+          <select id="eu-cliente">${empresas}</select>
+        </div>
+        <div class="field"><label>Rol</label>
+          <select id="eu-role">${opcion('user', 'Usuario', u.role)}${opcion('admin', 'Admin', u.role)}</select>
+        </div>
+        <div class="field"><label>Nueva contraseña</label>
+          <input type="text" id="eu-pass" placeholder="Dejala vacía para no cambiarla" autocomplete="off">
+        </div>
+      </div>
+      <div class="admin-botones">
+        <button class="btn-chico" onclick="editarUsuario(null)">Cancelar</button>
+        <button class="btn-chico primario" onclick="guardarUsuario(${jsArg(u.usuario)}, this)">Guardar</button>
+      </div>
+    </div>`;
 }
 
 function editarUsuario(usuario) {
   usuarioEditando = usuario;
-  cargarUsuarios();
+  pintarUsuarios();
+}
+
+// "+ Agregar" de un grupo: abre el formulario con la empresa ya puesta
+function nuevoUsuarioEn(clave) {
+  const form = $('new-user-form');
+  form.hidden = false;
+  $('nu-team').value = clave === 'planet' ? 'planet' : 'cliente';
+  mostrarCampoEmpresa();
+  if (clave !== 'planet') $('nu-empresa').value = clave;
+  form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  $('nu-user').focus();
 }
 
 async function guardarUsuario(usuario, btn) {
@@ -77,7 +168,8 @@ async function guardarUsuario(usuario, btn) {
   listo();
   if (!res.ok) return toast('Error: ' + (res.error || 'No se pudo actualizar'));
   toast('✓ Usuario actualizado');
-  editarUsuario(null);
+  usuarioEditando = null;
+  cargarUsuarios();   // lo volvemos a pedir: así se ve guardado lo que guardó el servidor
 }
 
 async function eliminarUsuario(usuario, nombre) {
@@ -86,7 +178,8 @@ async function eliminarUsuario(usuario, nombre) {
   const res = await api({ action: 'eliminar_usuario', usuario });
   if (!res.ok) return toast('Error: ' + (res.error || 'No se pudo eliminar'));
   toast('✓ Usuario eliminado');
-  cargarUsuarios();
+  usuariosCargados = usuariosCargados.filter(u => u.usuario !== usuario);
+  pintarUsuarios();
 }
 
 async function crearUsuario(btn) {

@@ -335,24 +335,32 @@ test('Planet: métricas, post-its y administración', async ({ browser }) => {
   await planet.click('#new-client-form >> text=Crear cliente');
   await expect(planet.locator('.cliente-ficha', { hasText: empresa })).toBeVisible();
 
-  // Usuarios: crear, editar y eliminar
+  // Usuarios: agrupados por empresa, con buscador; crear, editar y eliminar
   await planet.click('.sidebar-item[data-seccion="planet-usuarios"]');
-  await expect(planet.locator('.tabla-admin')).toContainText('nico.nume');
-  await planet.click('#planet-usuarios .admin-cabecera .btn-send');
+  await expect(planet.locator('.grupo-usuarios', { hasText: 'Equipo Planet' })).toContainText('ana.planet');
+  await expect(planet.locator('.grupo-usuarios', { hasText: 'NUME' })).toContainText('nico.nume');
+  // La empresa recién creada aparece aunque no tenga usuarios
+  await expect(planet.locator('.grupo-usuarios', { hasText: empresa })).toContainText('sin usuarios todavía');
+  await planet.fill('#users-search', 'nico');
+  await expect(planet.locator('.fila-usuario')).toHaveCount(1);
+  await planet.fill('#users-search', '');
+
+  // "+ Agregar" del grupo deja la empresa puesta
+  await planet.locator('.grupo-usuarios', { hasText: empresa }).getByRole('button', { name: '+ Agregar' }).click();
+  await expect(planet.locator('#nu-empresa')).toHaveValue(empresa);
   const usuario = ref('prueba').toLowerCase();
   await planet.fill('#nu-user', usuario);
   await planet.fill('#nu-name', 'Usuario de prueba');
   await planet.fill('#nu-pass', 'x123');
-  await planet.selectOption('#nu-empresa', empresa);
   await planet.click('#new-user-form >> text=Crear usuario');
-  const fila = planet.locator('.tabla-admin tr', { hasText: usuario });
-  await expect(fila).toContainText(empresa);
-  await fila.getByRole('button', { name: /Editar/ }).click();
+  const fila = planet.locator('.grupo-usuarios', { hasText: empresa }).locator('.fila-usuario', { hasText: usuario });
+  await expect(fila).toBeVisible();
+  await fila.getByRole('button', { name: 'Editar' }).click();
   await planet.fill('#eu-nombre', 'Nombre cambiado');
   await planet.click('text=Guardar');
-  await expect(planet.locator('.tabla-admin tr', { hasText: usuario })).toContainText('Nombre cambiado');
-  await planet.locator('.tabla-admin tr', { hasText: usuario }).getByRole('button', { name: 'Eliminar' }).click();
-  await expect(planet.locator('.tabla-admin tr', { hasText: usuario })).toHaveCount(0);
+  await expect(planet.locator('.fila-usuario', { hasText: usuario })).toContainText('Nombre cambiado');
+  await planet.locator('.fila-usuario', { hasText: usuario }).getByRole('button', { name: 'Eliminar' }).click();
+  await expect(planet.locator('.fila-usuario', { hasText: usuario })).toHaveCount(0);
 
   expect(planet.errores).toEqual([]);
 });
