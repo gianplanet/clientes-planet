@@ -711,3 +711,44 @@ test('con el reloj del dispositivo en otro país, las antigüedades y las horas 
   const minutos = (f) => { const m = f.match(/(\d+):(\d+)$/); return +m[1] * 60 + +m[2]; };
   expect(Math.abs(minutos(enPantalla) - minutos(guardada)) % 1439).toBeLessThanOrEqual(1);
 });
+
+test('un cliente eliminado deja de aparecer en los botones del inicio (salvo que tenga algo abierto)', async ({ browser }) => {
+  const planet = await ventana(browser);
+  await entrar(planet, 'ana.planet');
+  const empresa = ref('Borrable');
+  const usuario = ref('borrable').toLowerCase();
+  const { id: idCliente } = await apiDe(planet, { action: 'crear_cliente', nombre: empresa });
+  expect((await apiDe(planet, { action: 'crear_usuario', usuario, nombre: 'Borra', password: 'clave123', team: 'cliente', cliente: empresa })).ok).toBe(true);
+  const cliente = await ventana(browser);
+  await entrar(cliente, usuario);
+  const r = ref('DEBORRADO');
+  await crearConsultaCliente(cliente, r);
+
+  await planet.reload();
+  await expect(planet.locator('#screen-planet')).toHaveClass(/active/);
+  const boton = planet.locator('#planet-filter').getByText(empresa, { exact: false });
+  await expect(boton).toHaveCount(1);
+  // Planet está mirando ese cliente y lo elimina desde Clientes
+  await planet.evaluate((n) => elegirCliente(n), empresa);
+  await planet.click('.sidebar-item[data-seccion="planet-clientes"]');
+  await planet.locator('.cliente-ficha', { hasText: empresa }).getByRole('button', { name: 'Eliminar' }).click();
+  await expect(planet.locator('.cliente-ficha', { hasText: empresa })).toHaveCount(0);
+  await planet.click('.sidebar-item[data-seccion="planet-consultas"]');
+  // Tiene una consulta abierta: el botón sigue, para no perderla de vista
+  await expect(boton).toHaveCount(1);
+
+  // Al cerrarla, el botón se va; la consulta sigue estando en "Todos" y en el buscador
+  const [{ id }] = await enServidor(planet, r);
+  expect(idCliente).toBeGreaterThan(0);
+  await apiDe(planet, { action: 'cambiar_estado', id, estado: 'Cerrado' });
+  await refrescar(planet);
+  await expect(boton).toHaveCount(0);
+  expect(await planet.evaluate(() => filtroCliente)).toBe('Todos');
+  await planet.click('#planet-estado-filter >> text=Todos');
+  await planet.fill('#planet-search', r);
+  await expect(tarjetaPlanet(planet, r)).toBeVisible();
+  // Tampoco se le puede mandar una consulta nueva
+  expect(await planet.evaluate(() => [...$('pnq-cliente').options].map((o) => o.value))).not.toContain(empresa);
+  expect(planet.errores).toEqual([]);
+  await apiDe(planet, { action: 'eliminar_usuario', usuario });
+});

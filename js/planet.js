@@ -85,7 +85,8 @@ function pintarFiltrosPlanet() {
     `<button class="client-chip ${filtroEstado === 'Todos' ? 'active' : ''}" onclick="elegirEstado('Todos')">Todos</button>` + chipOrden();
 
   // Hasta 6 clientes van como botones; con más, un desplegable
-  const nombres = [...new Set(consultas.map(c => c.cliente))].sort();
+  const nombres = clientesDelFiltro();
+  if (filtroCliente !== 'Todos' && !nombres.includes(filtroCliente)) filtroCliente = 'Todos';
   if (nombres.length > 6) {
     const cuenta = n => consultas.filter(c => c.cliente === n).length;
     $('planet-filter').innerHTML = `
@@ -97,6 +98,23 @@ function pintarFiltrosPlanet() {
     $('planet-filter').innerHTML = nombres.concat('Todos').map(n =>
       `<button class="client-chip ${filtroCliente === n ? 'active' : ''}" onclick="elegirCliente(${jsArg(n)})">${esc(n)}</button>`).join('');
   }
+}
+
+// Qué clientes tienen botón: los que están en "Clientes". Uno que se eliminó
+// (o que nunca tuvo ficha) deja de aparecer, salvo que le quede alguna
+// consulta abierta: esas no se pueden perder de vista. Sus consultas cerradas
+// siguen estando en "Todos" y en el buscador.
+function clientesDelFiltro() {
+  const enConsultas = [...new Set(consultas.map(c => c.cliente))].filter(Boolean).sort();
+  if (!clientesRegistrados.length) return enConsultas;   // todavía no se cargó la lista de clientes
+  const conFicha = new Set(clientesRegistrados.map(c => normalizar(c.nombre)));
+  return enConsultas.filter(n => conFicha.has(normalizar(n)) || consultas.some(c => c.cliente === n && c.estado !== 'Cerrado'));
+}
+// La lista de clientes cambió (se cargó, se creó o se eliminó uno): se rehacen los botones
+function clientesCambiaron() {
+  actualizarClientesNuevaConsulta();
+  llenarEmpresasUsuario();
+  if (datosMostrados && esPlanet()) { pintarFiltrosPlanet(); pintarListaPlanet(); }
 }
 
 function elegirCliente(nombre) {
@@ -331,8 +349,7 @@ async function cargarClientesRegistrados() {
   const res = await api({ action: 'clientes' });
   if (!res.ok) { _clientesCargados = false; return; }
   clientesRegistrados = res.clientes || [];
-  actualizarClientesNuevaConsulta();
-  llenarEmpresasUsuario();
+  clientesCambiaron();
 }
 
 // La lista de clientes del formulario. Solo se vuelve a armar si cambió, y

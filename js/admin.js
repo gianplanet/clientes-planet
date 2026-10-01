@@ -115,8 +115,7 @@ async function cargarClientes() {
   const res = await api({ action: 'clientes' });
   if (!res.ok) { cont.innerHTML = '<div class="empty-state"><p>Error cargando clientes</p></div>'; return; }
   clientesRegistrados = res.clientes || [];
-  actualizarClientesNuevaConsulta();
-  llenarEmpresasUsuario();
+  clientesCambiaron();
   if (!clientesRegistrados.length) { cont.innerHTML = '<div class="empty-state"><p>No hay clientes registrados</p></div>'; return; }
   const dato = (label, valor) => `<div><span>${label}:</span> ${esc(valor || '-')}</div>`;
   cont.innerHTML = clientesRegistrados.map(c => `
