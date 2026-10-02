@@ -2,6 +2,7 @@
 // si nuestro resultado es idéntico al del papel, los teléfonos lo van a poder abrir.
 import { describe, it, expect } from 'vitest';
 import { cifrar, aB64url, deB64url } from '../src/push.js';
+import { tituloAviso } from '../src/consultas.js';
 
 // Sección 5 del RFC 8291
 const EJEMPLO = {
@@ -45,6 +46,20 @@ describe('avisos al teléfono', () => {
     expect(aB64url(uno)).not.toBe(aB64url(otro));
     // Arranca con 16 de sal + 4 de tamaño + 1 + la clave pública (65)
     expect(uno.length).toBe(16 + 4 + 1 + 65 + 'hola'.length + 1 + 16);
+  });
+
+  it('el aviso dice lo que pasó, visto por el que lo recibe', () => {
+    const planet = { dePlanet: true, direccion: 'cliente_a_planet', cliente: 'NUME' };
+    // "Enviar y cerrar" no es una respuesta más: es que se la resolvimos
+    expect(tituloAviso({ ...planet, nuevo: 'Cerrado' })).toBe('Planet resolvió tu consulta');
+    expect(tituloAviso({ ...planet, nuevo: 'En proceso' })).toBe('Planet te respondió');
+    expect(tituloAviso({ ...planet, nuevo: 'Esperando info' })).toBe('Planet necesita info tuya');
+    expect(tituloAviso({ ...planet, nuevo: 'En proceso', reabre: true })).toBe('Planet reabrió una consulta');
+    // Una consulta que hicimos nosotros no se le "resuelve" al cliente
+    expect(tituloAviso({ ...planet, direccion: 'planet_a_cliente', nuevo: 'Cerrado' })).toBe('Planet cerró la consulta');
+    // Y del otro lado
+    expect(tituloAviso({ dePlanet: false, cliente: 'NUME', nuevo: 'Respuesta cliente' })).toBe('NUME respondió');
+    expect(tituloAviso({ dePlanet: false, cliente: 'NUME', reabre: true })).toBe('NUME reabrió una consulta');
   });
 
   it('base64url va y vuelve', () => {

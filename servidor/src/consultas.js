@@ -223,6 +223,17 @@ async function hayMensajeSinLeer(db, id, visto) {
   ).bind(id, v).first());
 }
 
+// Qué dice el aviso según lo que acaba de pasar. Mirado desde el que lo recibe.
+export function tituloAviso({ reabre, dePlanet, nuevo, direccion, cliente }) {
+  if (!dePlanet) return reabre ? `${cliente} reabrió una consulta` : `${cliente} respondió`;
+  if (reabre) return 'Planet reabrió una consulta';
+  if (nuevo === 'Cerrado') {
+    return direccion === 'cliente_a_planet' ? 'Planet resolvió tu consulta' : 'Planet cerró la consulta';
+  }
+  if (nuevo === 'Esperando info') return 'Planet necesita info tuya';
+  return 'Planet te respondió';
+}
+
 export async function responder(db, me, p, ctx, env) {
   const origen = ctx.origen;
   const id = idValido(p.id);
@@ -269,9 +280,7 @@ export async function responder(db, me, p, ctx, env) {
   const dePlanet = esPlanet(me);
   avisarConsulta(ctx.ejecucion, env, {
     aPlanet: !dePlanet, cliente: c.cliente, salvo: me.usuario, id,
-    titulo: reabre ? (dePlanet ? 'Planet reabrió una consulta' : `${c.cliente} reabrió una consulta`)
-      : dePlanet ? (nuevo === 'Esperando info' ? 'Planet necesita info tuya' : 'Planet te respondió')
-      : `${c.cliente} respondió`,
+    titulo: tituloAviso({ reabre, dePlanet, nuevo, direccion: c.direccion, cliente: c.cliente }),
     cuerpo: t || 'Te mandaron una foto',
   });
   return ok({ reabierta: reabre, estado: nuevo });
@@ -311,7 +320,7 @@ export async function cambiarEstado(db, me, p, ctx, env) {
   if (estado === 'Cerrado' && antes.direccion === 'cliente_a_planet') {
     avisarConsulta(ctx && ctx.ejecucion, env, {
       aPlanet: false, cliente: antes.cliente, salvo: me.usuario, id,
-      titulo: 'Resolvimos tu consulta', cuerpo: antes.asunto || '',
+      titulo: 'Planet resolvió tu consulta', cuerpo: antes.asunto || '',
     });
   }
   return ok({});
