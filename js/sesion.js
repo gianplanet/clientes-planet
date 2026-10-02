@@ -245,6 +245,7 @@ async function entrar() {
   sesion = Object.assign({}, res.user, { token: res.token });
   local.guardar('planet_user', sesion);
   abrirVista();
+  renovarAvisos();
   pedirResumenDeTurno(true);
   usarPaquete(res);
   arrancarRevision();
@@ -312,6 +313,7 @@ function entrarConSesionGuardada() {
   if (!guardada || !guardada.token) { local.borrar('planet_user'); return; }
   sesion = guardada;
   abrirVista();
+  renovarAvisos();
   pedirResumenDeTurno(false);
   const cache = local.leer(claveCache());
   if (cache) { recibirConsultas(cache, true); pintar(); }

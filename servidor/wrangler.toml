@@ -14,3 +14,10 @@ database_id = "f1635005-6e4e-4555-8d05-b52d28f56702"
 [[kv_namespaces]]
 binding = "IMAGENES"
 id = "fea0791d86b041938d0250dfed1ea6d9"
+
+# Avisos al teléfono (Web Push). La clave pública la necesita el navegador para
+# suscribirse, así que no es secreta. La privada va aparte:
+#   wrangler secret put VAPID_PRIVADA --config servidor/wrangler.toml
+[vars]
+VAPID_PUBLICA = "BHJf4v1KDyPFqXjuASYrrwiBxTsKHPlEcdv2Yf8RVRC0n6FdVATeeZmLqcazXQxS8qaTQklm9praJxnjyiJvax0"
+PORTAL_URL = "https://atencionalcliente.planetlog.com.ar/"

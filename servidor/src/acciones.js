@@ -16,6 +16,7 @@ import {
   listarClientes, crearCliente, editarCliente, eliminarCliente,
 } from './admin.js';
 import { subirImagen } from './imagenes.js';
+import { guardarSuscripcion, borrarSuscripcion, avisarA } from './push.js';
 
 // Lo que se manda al cargar y en cada actualización: consultas + (para Planet)
 // sus post-its, así se sincronizan si los edita desde otra computadora
@@ -42,11 +43,25 @@ const ACCIONES = {
 
   consultas: { acceso: 'usuario', fn: async ({ db, me, p }) => ok(await paquete(db, me, p)) },
   novedades: { acceso: 'usuario', fn: async ({ db, me }) => ok({ ultimo: await ultimoCambio(db, me) }) },
-  nueva_consulta: { acceso: 'usuario', fn: ({ db, me, p, ctx }) => nuevaConsulta(db, me, p, ctx.origen) },
-  responder: { acceso: 'usuario', fn: ({ db, me, p, ctx }) => responder(db, me, p, ctx.origen) },
+  nueva_consulta: { acceso: 'usuario', fn: ({ db, me, p, ctx, env }) => nuevaConsulta(db, me, p, ctx, env) },
+  responder: { acceso: 'usuario', fn: ({ db, me, p, ctx, env }) => responder(db, me, p, ctx, env) },
   subir_imagen: { acceso: 'usuario', fn: ({ env, p, ctx }) => subirImagen(env, p, ctx.origen) },
 
-  cambiar_estado: { acceso: 'planet', fn: ({ db, me, p }) => cambiarEstado(db, me, p) },
+  cambiar_estado: { acceso: 'planet', fn: ({ db, me, p, ctx, env }) => cambiarEstado(db, me, p, ctx, env) },
+
+  // Avisos al teléfono: la clave pública es la que necesita el navegador para suscribirse
+  push_clave: { acceso: 'usuario', fn: ({ env }) => ok({ clave: env.VAPID_PUBLICA || '' }) },
+  push_alta: { acceso: 'usuario', fn: ({ db, me, p }) => guardarSuscripcion(db, me, p) },
+  push_baja: { acceso: 'usuario', fn: ({ db, me, p }) => borrarSuscripcion(db, me, p) },
+  push_prueba: {
+    acceso: 'usuario',
+    fn: async ({ env, me }) => {
+      const r = await avisarA(env, [me.usuario], {
+        titulo: 'Prueba de avisos', cuerpo: 'Si ves esto, los avisos funcionan en este dispositivo.',
+      });
+      return r.enviados ? ok(r) : err('No se pudo mandar el aviso de prueba. Activalo de nuevo en este dispositivo.');
+    },
+  },
   clientes: { acceso: 'planet', fn: ({ db }) => listarClientes(db) },
   notas: { acceso: 'planet', fn: async ({ db, me }) => ok({ notas: await listarNotas(db, me) }) },
   nota_guardar: { acceso: 'planet', fn: ({ db, me, p }) => guardarNota(db, me, p) },

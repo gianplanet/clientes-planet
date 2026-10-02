@@ -1,3 +1,4 @@
 // ═══ ARRANQUE ═══
 llenarTiposDeProblema();
 entrarConSesionGuardada();
+abrirConsultaDeLaDireccion();

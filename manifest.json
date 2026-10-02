@@ -1,0 +1,16 @@
+{
+  "name": "Portal de Clientes Planet",
+  "short_name": "Planet",
+  "description": "Consultas de envíos entre Planet y sus clientes",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "lang": "es-AR",
+  "background_color": "#f8fafc",
+  "theme_color": "#2563eb",
+  "icons": [
+    { "src": "logo.png", "sizes": "500x500", "type": "image/png", "purpose": "any" },
+    { "src": "logo.png", "sizes": "500x500", "type": "image/png", "purpose": "maskable" }
+  ]
+}

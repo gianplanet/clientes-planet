@@ -644,6 +644,12 @@ body {
   .modal-content { border-radius: var(--radius); max-width: 520px; padding: 24px; }
 }
 
+/* ── AVISOS AL TELÉFONO ── */
+.avisos-texto { font-size: 14px; color: var(--text-secondary); line-height: 1.55; margin: 0 0 14px; }
+.avisos-pasos { font-size: 14px; color: var(--text-secondary); line-height: 1.6; margin: 0 0 8px; padding-left: 20px; }
+.avisos-pasos li + li { margin-top: 6px; }
+.avisos-botones { display: flex; gap: 8px; justify-content: flex-end; }
+
 /* ── RESUMEN DE TURNO (Planet) ── */
 .turno-sub { font-size: 13px; color: var(--text-secondary); margin: -8px 0 6px; }
 .turno-fila {

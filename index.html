@@ -5,8 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Planet · Portal de Clientes</title>
 <link rel="icon" type="image/png" href="logo.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#2563eb">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Planet">
+<link rel="apple-touch-icon" href="logo.png">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap">
-<link rel="stylesheet" href="css/portal.css?v=11">
+<link rel="stylesheet" href="css/portal.css?v=12">
 </head>
 <body>
 
@@ -47,6 +52,7 @@
         <button class="icon-btn" id="client-guia-btn" onclick="iniciarGuia()" title="Cómo funciona el portal">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 015.8 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
         </button>
+        <button class="icon-btn" onclick="abrirAvisos()" title="Avisos" aria-label="Avisos"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg></button>
         <button class="icon-btn" id="client-reload" onclick="cargarTodo()" title="Recargar">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
         </button>
@@ -89,6 +95,17 @@
         </button>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- Modal: avisos al teléfono -->
+<div class="modal-overlay" id="modal-avisos">
+  <div class="modal-content">
+    <div class="modal-title">
+      Avisos en este dispositivo
+      <button class="modal-close" onclick="cerrarAvisos()" title="Cerrar">&#10005;</button>
+    </div>
+    <div id="avisos-cuerpo"></div>
   </div>
 </div>
 
@@ -154,6 +171,7 @@
         <button class="icon-btn btn-nota" onclick="nuevaNota()" title="Pegar una nota" aria-label="Pegar una nota">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15.5 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V8.5L15.5 3z"/><path d="M15 3v6h6"/><path d="M9 13h6M12 10v6"/></svg>
         </button>
+        <button class="icon-btn" onclick="abrirAvisos()" title="Avisos" aria-label="Avisos"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg></button>
         <button class="icon-btn" id="planet-reload" onclick="cargarTodo()" title="Recargar">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
         </button>
@@ -352,18 +370,19 @@
 </svg>
 
 <!-- El orden importa: cada archivo usa lo de los anteriores -->
-<script src="js/base.js?v=11"></script>
-<script src="js/api.js?v=11"></script>
-<script src="js/animaciones.js?v=11"></script>
-<script src="js/sesion.js?v=11"></script>
-<script src="js/imagenes.js?v=11"></script>
-<script src="js/consultas.js?v=11"></script>
-<script src="js/cliente.js?v=11"></script>
-<script src="js/planet.js?v=11"></script>
-<script src="js/metricas.js?v=11"></script>
-<script src="js/notas.js?v=11"></script>
-<script src="js/guia.js?v=11"></script>
-<script src="js/admin.js?v=11"></script>
-<script src="js/inicio.js?v=11"></script>
+<script src="js/base.js?v=12"></script>
+<script src="js/api.js?v=12"></script>
+<script src="js/animaciones.js?v=12"></script>
+<script src="js/sesion.js?v=12"></script>
+<script src="js/imagenes.js?v=12"></script>
+<script src="js/consultas.js?v=12"></script>
+<script src="js/cliente.js?v=12"></script>
+<script src="js/planet.js?v=12"></script>
+<script src="js/metricas.js?v=12"></script>
+<script src="js/notas.js?v=12"></script>
+<script src="js/guia.js?v=12"></script>
+<script src="js/admin.js?v=12"></script>
+<script src="js/avisos.js?v=12"></script>
+<script src="js/inicio.js?v=12"></script>
 </body>
 </html>

@@ -3,6 +3,7 @@
 import { ok, err } from './http.js';
 import { esPlanet } from './auth.js';
 import { ahoraAR, msDeFechaAR, tipoDeAsunto, esVerdadero, texto, idValido, DIA_MS } from './util.js';
+import { avisarConsulta } from './push.js';
 import { esClaveDeImagen } from './imagenes.js';
 
 // Estados que se guardan en la base. Cada lado los ve con su propio nombre
@@ -160,7 +161,8 @@ function insertarMensaje(db, { consultaId, me, fecha, texto: t, imgs, cuando }) 
 }
 
 // ── CREAR ──────────────────────────────────────────────────
-export async function nuevaConsulta(db, me, p, origen) {
+export async function nuevaConsulta(db, me, p, ctx, env) {
+  const origen = ctx.origen;
   const asunto = texto(p.asunto, MAX_ASUNTO);
   const mensaje = texto(p.mensaje, MAX_MENSAJE);
   const cliente = esPlanet(me) ? texto(p.cliente, 100) : me.cliente;
@@ -182,6 +184,13 @@ export async function nuevaConsulta(db, me, p, origen) {
     insertarMensaje(db, { consultaId: id, me, fecha, texto: mensaje, imgs: imagenesValidas(p.imagenes, origen), cuando: ahora }),
     anotarEvento(db, { consultaId: id, evento: 'creada', a: estado, me, cuando: ahora }),
   ]);
+
+  const aPlanet = direccion === 'cliente_a_planet';
+  avisarConsulta(ctx.ejecucion, env, {
+    aPlanet, cliente, salvo: me.usuario, id,
+    titulo: aPlanet ? `${cliente} · consulta nueva` : 'Planet te hizo una consulta',
+    cuerpo: asunto,
+  });
   return ok({ id });
 }
 
@@ -214,7 +223,8 @@ async function hayMensajeSinLeer(db, id, visto) {
   ).bind(id, v).first());
 }
 
-export async function responder(db, me, p, origen) {
+export async function responder(db, me, p, ctx, env) {
+  const origen = ctx.origen;
   const id = idValido(p.id);
   const t = texto(p.texto, MAX_MENSAJE);
   const imgs = imagenesValidas(p.imagenes, origen);
@@ -255,16 +265,25 @@ export async function responder(db, me, p, origen) {
     ops.push(anotarEvento(db, { consultaId: id, evento: 'estado', de: c.estado, a: nuevo, me, cuando: ahora }));
   }
   await db.batch(ops);
+
+  const dePlanet = esPlanet(me);
+  avisarConsulta(ctx.ejecucion, env, {
+    aPlanet: !dePlanet, cliente: c.cliente, salvo: me.usuario, id,
+    titulo: reabre ? (dePlanet ? 'Planet reabrió una consulta' : `${c.cliente} reabrió una consulta`)
+      : dePlanet ? (nuevo === 'Esperando info' ? 'Planet necesita info tuya' : 'Planet te respondió')
+      : `${c.cliente} respondió`,
+    cuerpo: t || 'Te mandaron una foto',
+  });
   return ok({ reabierta: reabre, estado: nuevo });
 }
 
 // ── CAMBIAR ESTADO (solo Planet) ───────────────────────────
-export async function cambiarEstado(db, me, p) {
+export async function cambiarEstado(db, me, p, ctx, env) {
   const id = idValido(p.id);
   const estado = p.estado;
   if (!id || !estado) return err('Faltan campos');
   if (!ESTADOS.includes(estado)) return err('Estado inválido');
-  const antes = await db.prepare('SELECT estado, atendido_por FROM consultas WHERE id = ?').bind(id).first();
+  const antes = await db.prepare('SELECT estado, atendido_por, direccion, cliente, asunto FROM consultas WHERE id = ?').bind(id).first();
   if (!antes) return err('Consulta no encontrada');
   if (antes.estado === estado) return ok({});   // nada que cambiar (y no pisa la hora de cierre)
   if (estado === 'Cerrado' && await hayMensajeSinLeer(db, id, p.visto)) {
@@ -287,5 +306,13 @@ export async function cambiarEstado(db, me, p) {
     ops.push(db.prepare('UPDATE consultas SET atendido_por = ? WHERE id = ?').bind(me.nombre, id));
   }
   await db.batch(ops);
+
+  // Al cliente solo le avisamos de lo que le importa: que se la resolvimos
+  if (estado === 'Cerrado' && antes.direccion === 'cliente_a_planet') {
+    avisarConsulta(ctx && ctx.ejecucion, env, {
+      aPlanet: false, cliente: antes.cliente, salvo: me.usuario, id,
+      titulo: 'Resolvimos tu consulta', cuerpo: antes.asunto || '',
+    });
+  }
   return ok({});
 }

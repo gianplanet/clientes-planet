@@ -19,7 +19,7 @@ import { ejecutar } from './acciones.js';
 import { servirImagen } from './imagenes.js';
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ejecucion) {
     const url = new URL(request.url);
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
     if (url.pathname.startsWith('/img/')) return servirImagen(env, url);
@@ -27,7 +27,7 @@ export default {
     const p = await leerParametros(request, url);
     if (!p.action) return responderJson(err('Falta el parámetro action'));
 
-    const ctx = { origen: url.origin, ip: request.headers.get('CF-Connecting-IP') || '' };
+    const ctx = { origen: url.origin, ip: request.headers.get('CF-Connecting-IP') || '', ejecucion };
     try {
       return responderJson(await ejecutar(String(p.action), p, env, ctx));
     } catch (e) {
