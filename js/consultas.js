@@ -281,9 +281,18 @@ function altaEnMs(c) {
   return fechaMs(Number(c.creado_en)) || fechaMs(c.fecha) || (primero ? fechaMs(primero.fecha) : 0);
 }
 
+// Desde cuándo viene sin resolver. Si se reabrió, el reloj arranca de nuevo:
+// una consulta que volvió hace un rato no lleva dos días sin resolver.
+function sinResolverDesdeMs(c) {
+  const alta = altaEnMs(c);
+  if (c.estado === 'Cerrado') return alta;
+  const reapertura = fechaMs(Number(c.reabierta_en));
+  return reapertura > alta ? reapertura : alta;
+}
+
 function tagTiempo(c, grupo) {
   if (grupo === 'cerrado') return '';
-  const alta = altaEnMs(c);
+  const alta = sinResolverDesdeMs(c);
   if (!alta) return '';
   const edad = Date.now() - alta;
   if (grupo === 'espera') {

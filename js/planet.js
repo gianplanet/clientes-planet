@@ -52,7 +52,7 @@ function avisosPlanet(rec, pendientes) {
   const reabiertas = rec.filter(fueReabierta).length;
   // Las que esperan al cliente no cuentan como demoradas nuestras
   const demoradas = rec.filter(c => {
-    const g = grupoPlanet(c.estado), alta = altaEnMs(c);
+    const g = grupoPlanet(c.estado), alta = sinResolverDesdeMs(c);
     return g !== 'cerrado' && g !== 'espera' && alta && Date.now() - alta >= HORAS_URGENTE * HORA_MS;
   }).length;
   let html = '';
@@ -434,7 +434,7 @@ function pedirResumenDeTurno(recienEntro) {
 
 function resumenDeTurno() {
   const ahora = Date.now();
-  const edad = c => { const alta = altaEnMs(c); return alta ? ahora - alta : 0; };
+  const edad = c => { const alta = sinResolverDesdeMs(c); return alta ? ahora - alta : 0; };
   const por = g => consultas.filter(c => grupoPlanet(c.estado) === g);
   const pendientes = por('pendiente'), proceso = por('proceso'), espera = por('espera');
   const atender = pendientes.concat(proceso);

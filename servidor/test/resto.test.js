@@ -43,6 +43,18 @@ describe('métricas', () => {
     expect(m.abiertas.masDe48h).toBe(1);
   });
 
+  it('una consulta reabierta arranca el reloj de nuevo', async () => {
+    const { nume, admin } = await escenario();
+    const { id } = await consulta(nume);
+    // Entró hace 3 días pero volvió hace una: no lleva 3 días sin resolver
+    await db.prepare('UPDATE consultas SET creado_en = ?, reabierta_en = ? WHERE id = ?')
+      .bind(Date.now() - 72 * H, Date.now() - H, id).run();
+    const m = await admin({ action: 'metricas', dias: 0 });
+    expect(m.abiertas.cantidad).toBe(1);
+    expect(m.abiertas.masDe48h).toBe(0);
+    expect(m.abiertas.antiguedadMaxima).toBeLessThan(2 * H);
+  });
+
   it('las de cierre estimado no entran en el tiempo de resolución', async () => {
     const { nume, admin } = await escenario();
     const { id } = await consulta(nume);

@@ -42,7 +42,7 @@ export async function metricas(db, p) {
   const valores = cliente ? [cliente] : [];
   const [rConsultas, rMensajes, rExcluidas] = await db.batch([
     db.prepare(
-      `SELECT c.id, c.cliente, c.tipo, c.estado, c.creado_en, c.cerrado_en, c.cierre_aprox
+      `SELECT c.id, c.cliente, c.tipo, c.estado, c.creado_en, c.cerrado_en, c.cierre_aprox, c.reabierta_en
        FROM consultas c WHERE ${filtro}`
     ).bind(...valores),
     db.prepare(
@@ -126,7 +126,9 @@ export async function metricas(db, p) {
     .map((r) => ({ cliente: r.cliente, nuevas: r.nuevas, resueltas: r.resueltas, resolucion: mediana(r.tiempos), nuestro: mediana(r.propios) }))
     .sort((a, b) => b.nuevas - a.nuevas);
 
-  const antiguedades = abiertas.map((c) => ahora - (c.creado_en || ahora));
+  // Una consulta reabierta no arrastra la antigüedad vieja: el reloj vuelve a cero al reabrirse.
+  const desdeCuando = (c) => Math.max(c.creado_en || 0, c.reabierta_en || 0) || ahora;
+  const antiguedades = abiertas.map((c) => ahora - desdeCuando(c));
 
   return ok({
     dias,
