@@ -36,6 +36,51 @@ async function cargarMetricas() {
 
 function elegirPeriodo(d) { metPeriodo = d; cargarMetricas(); }
 
+// "8", "8:30" — hora de turno
+function fmtHora(h) {
+  if (h == null || h === '') return '';
+  const n = Number(h), hh = Math.floor(n), mm = Math.round((n - hh) * 60);
+  return mm ? `${hh}:${String(mm).padStart(2, '0')}` : String(hh);
+}
+
+// Panel "Por persona": a cada uno su tiempo de respuesta (en su turno),
+// qué tipos atiende y cuánto tarda en cerrar.
+function htmlEquipo(equipo) {
+  if (!equipo || !equipo.length) return '';
+  const maxTipo = Math.max(1, ...equipo.flatMap(p => p.tipos.map(t => t.cantidad)));
+  const tarjetas = equipo.map(p => {
+    const r = p.respuesta || {};
+    const turno = p.turno ? `🕑 ${fmtHora(p.turno.desde)}–${fmtHora(p.turno.hasta)} h` : 'sin turno (horas corridas)';
+    const tipos = p.tipos.length
+      ? p.tipos.slice(0, 6).map(t => `<span class="persona-tipo" title="${esc(t.tipo)}: ${t.cantidad}">
+          <span class="persona-tipo-barra" style="width:${Math.max(16, t.cantidad * 44 / maxTipo)}px"></span>
+          ${esc(t.tipo)} <b>${t.cantidad}</b></span>`).join('')
+      : '<span class="met-nota">Sin consultas atendidas en este período</span>';
+    return `<div class="met-persona">
+      <div class="persona-cab">
+        <div class="chat-av" style="background:${avatarColor(p.nombre)}">${esc(String(p.nombre || '?')[0].toUpperCase())}</div>
+        <div class="persona-id"><div class="persona-nombre">${esc(p.nombre)}</div><div class="persona-turno">${turno}</div></div>
+      </div>
+      <div class="persona-cifras">
+        <div class="persona-cifra">
+          <div class="persona-valor">${fmtDuracion(r.mediana)}</div>
+          <div class="persona-cifra-pie">respuesta ${r.muestras ? `· ${r.muestras} · prom ${fmtDuracion(r.promedio)}` : '· sin datos'}</div>
+        </div>
+        <div class="persona-cifra">
+          <div class="persona-valor">${p.cerradas ? fmtDuracion(p.cierre) : '—'}</div>
+          <div class="persona-cifra-pie">${p.cerradas ? `cierre · ${p.cerradas} cerrada${p.cerradas === 1 ? '' : 's'}` : 'no cerró ninguna'}</div>
+        </div>
+      </div>
+      <div class="persona-tipos">${tipos}</div>
+    </div>`;
+  }).join('');
+  return `<div class="met-panel">
+    <h4>Por persona del equipo</h4>
+    <p class="met-nota" style="margin-top:0">Cada respuesta se mide contra <strong>el turno de esa persona</strong>: el reloj se pausa fuera de su horario (no se cuenta la noche ni el turno del otro). El turno se configura en <strong>Admin → Usuarios</strong>.</p>
+    <div class="met-personas">${tarjetas}</div>
+  </div>`;
+}
+
 function htmlMetricas(m) {
   const r = m.resolucion, pr = m.primeraRespuesta, rc = m.respuestaCliente, ab = m.abiertas;
   const nr = m.nuestrasRespuestas, tn = m.tiempoNuestro;
@@ -78,6 +123,8 @@ function htmlMetricas(m) {
 
   return `
     <div class="met-grid">${tiles}</div>
+
+    ${htmlEquipo(m.equipo)}
 
     <div class="met-panel">
       <h4>Qué nos consultan (${totalTipos} consulta${totalTipos === 1 ? '' : 's'})</h4>

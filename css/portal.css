@@ -290,6 +290,39 @@ body {
 .met-tabla td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .met-nota { font-size: 12px; color: var(--text-muted); line-height: 1.5; margin-top: 6px; }
 
+/* ── MÉTRICAS POR PERSONA ── */
+.met-personas { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.met-persona {
+  background: var(--surface); border: 1px solid var(--card-border);
+  border-radius: var(--radius); padding: 14px;
+}
+.persona-cab { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.persona-cab .chat-av { width: 34px; height: 34px; font-size: 14px; flex: none; }
+.persona-nombre { font-size: 14px; font-weight: 700; color: var(--text); }
+.persona-turno { font-size: 12px; color: var(--text-muted); }
+.persona-cifras { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+.persona-cifra {
+  background: var(--card); border: 1px solid var(--card-border);
+  border-radius: 10px; padding: 8px 10px;
+}
+.persona-valor { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text); line-height: 1.1; }
+.persona-cifra-pie { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+.persona-tipos { display: flex; flex-wrap: wrap; gap: 6px; }
+.persona-tipo {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--text-secondary);
+  background: var(--card); border: 1px solid var(--card-border);
+  border-radius: 999px; padding: 3px 10px 3px 4px;
+}
+.persona-tipo b { color: var(--text); font-variant-numeric: tabular-nums; }
+.persona-tipo-barra { display: inline-block; height: 6px; border-radius: 3px; background: var(--primary); }
+
+/* Turno en Admin → Usuarios */
+.fila-turno { color: var(--text-secondary); }
+.turno-field .turno-row { display: flex; align-items: center; gap: 8px; }
+.turno-field .turno-row input { width: 72px; }
+.turno-field .turno-row span { font-size: 13px; color: var(--text-muted); }
+
 /* ── BUSCADOR ── */
 .search-row { position: relative; margin-bottom: 12px; }
 .search-row .search-ico {

@@ -92,13 +92,26 @@ function grupoUsuarios(clave, titulo, usuarios, coincide) {
     </div>`;
 }
 
+// "8", "8:30", "17" — hora de turno para mostrar
+function fmtHoraTurno(h) {
+  if (h == null || h === '') return '';
+  const n = Number(h);
+  const hh = Math.floor(n), mm = Math.round((n - hh) * 60);
+  return mm ? `${hh}:${String(mm).padStart(2, '0')}` : String(hh);
+}
+function textoTurno(u) {
+  if (u.turno_desde == null || u.turno_hasta == null) return '';
+  return `${fmtHoraTurno(u.turno_desde)}–${fmtHoraTurno(u.turno_hasta)} h`;
+}
+
 function filaUsuario(u) {
+  const turno = u.team === 'planet' ? textoTurno(u) : '';
   return `
     <div class="fila-usuario">
       <div class="fila-avatar" style="background:${avatarColor(u.nombre)}">${esc((u.nombre || '?')[0])}</div>
       <div class="fila-datos">
         <div class="nombre">${esc(u.nombre)}</div>
-        <div class="usuario">${esc(u.usuario)}</div>
+        <div class="usuario">${esc(u.usuario)}${turno ? ` · <span class="fila-turno">🕑 ${turno}</span>` : ''}</div>
       </div>
       ${u.role === 'admin' ? '<span class="etiqueta admin">Admin</span>' : ''}
       <div class="fila-acciones">
@@ -117,12 +130,21 @@ function filaEditandoUsuario(u) {
       <div class="admin-grid">
         <div class="field"><label>Nombre</label><input type="text" id="eu-nombre" value="${esc(u.nombre)}"></div>
         <div class="field"><label>Equipo</label>
-          <select id="eu-team" onchange="$('eu-cliente-wrap').hidden = this.value !== 'cliente'">
+          <select id="eu-team" onchange="$('eu-cliente-wrap').hidden = this.value !== 'cliente'; $('eu-turno-wrap').hidden = this.value !== 'planet'">
             ${opcion('planet', 'Planet', u.team)}${opcion('cliente', 'Cliente', u.team)}
           </select>
         </div>
         <div class="field" id="eu-cliente-wrap"${u.team === 'cliente' ? '' : ' hidden'}><label>Empresa</label>
           <select id="eu-cliente">${empresas}</select>
+        </div>
+        <div class="field turno-field" id="eu-turno-wrap"${u.team === 'planet' ? '' : ' hidden'}>
+          <label>Turno <span class="field-hint">(para las métricas; vacío = horas corridas)</span></label>
+          <div class="turno-row">
+            <input type="number" id="eu-turno-desde" min="0" max="24" step="0.5" placeholder="desde" value="${u.turno_desde ?? ''}">
+            <span>a</span>
+            <input type="number" id="eu-turno-hasta" min="0" max="24" step="0.5" placeholder="hasta" value="${u.turno_hasta ?? ''}">
+            <span>h</span>
+          </div>
         </div>
         <div class="field"><label>Rol</label>
           <select id="eu-role">${opcion('user', 'Usuario', u.role)}${opcion('admin', 'Admin', u.role)}</select>
@@ -163,6 +185,10 @@ async function guardarUsuario(usuario, btn) {
   };
   const pass = $('eu-pass').value.trim();
   if (pass) params.password = pass;
+  if (team === 'planet') {
+    params.turno_desde = $('eu-turno-desde').value.trim();
+    params.turno_hasta = $('eu-turno-hasta').value.trim();
+  }
   const listo = ocupado(btn, 'Guardando...');
   const res = await api(params);
   listo();

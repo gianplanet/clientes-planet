@@ -11,9 +11,17 @@ const CAMPOS_CLIENTE = ['nombre', 'contacto', 'telefono', 'email', 'direccion', 
 // ── USUARIOS ───────────────────────────────────────────────
 export async function listarUsuarios(db) {
   const { results } = await db.prepare(
-    'SELECT usuario, nombre, team, cliente, role FROM usuarios ORDER BY usuario'
+    'SELECT usuario, nombre, team, cliente, role, turno_desde, turno_hasta FROM usuarios ORDER BY usuario'
   ).all();
   return ok({ usuarios: results });
+}
+
+// Hora de turno: número entre 0 y 24 (admite media hora). '' o inválido → NULL.
+function horaTurno(v) {
+  if (v === '' || v === null || v === undefined) return null;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0 || n > 24) return null;
+  return Math.round(n * 2) / 2;   // a la media hora más cercana
 }
 
 async function existeUsuario(db, usuario) {
@@ -51,6 +59,12 @@ export async function editarUsuario(db, me, p) {
   else if (texto(p.cliente, 100)) cambios.cliente = texto(p.cliente, 100);
   const password = texto(p.password, 200);
   if (password) cambios.password_hash = await hashPassword(password);
+  // Turno (para las métricas por persona). Un cliente no tiene turno.
+  if (cambios.team === 'cliente') { cambios.turno_desde = null; cambios.turno_hasta = null; }
+  else {
+    if (p.turno_desde !== undefined) cambios.turno_desde = horaTurno(p.turno_desde);
+    if (p.turno_hasta !== undefined) cambios.turno_hasta = horaTurno(p.turno_hasta);
+  }
 
   const final = { ...actual, ...cambios };
   if (final.team === 'cliente' && (!final.cliente || final.cliente === '-')) return err('Falta la empresa del cliente');
