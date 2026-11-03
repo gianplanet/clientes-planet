@@ -1119,3 +1119,8 @@ body {
 .etiqueta.cobros { background: var(--success-bg); color: var(--success-text); }
 .check-fila { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text); cursor: pointer; padding: 8px 0; text-transform: none; letter-spacing: 0; font-weight: 400; }
 .check-fila input { width: 16px; height: 16px; accent-color: var(--primary); }
+
+/* "Solo Cobros": la pantalla de Planet sin menú, notas, avisos ni recargar consultas */
+#screen-planet.solo-cobros .sidebar,
+#screen-planet.solo-cobros .notas-capa,
+#screen-planet.solo-cobros .topbar-actions > :not(.btn-salir) { display: none !important; }

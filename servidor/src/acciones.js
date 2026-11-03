@@ -2,13 +2,14 @@
 //
 // Niveles de acceso:
 //   publica → sin sesión (login, logout)
-//   usuario → cualquier usuario con sesión
+//   sesion  → cualquiera con sesión, también los de "solo Cobros"
+//   usuario → cualquier usuario con sesión, menos los de "solo Cobros"
 //   planet  → solo el equipo de Planet
 //   admin   → solo admins de Planet
-//   cobros  → gente de Planet con el permiso de Cobros (ver auth.js)
+//   cobros  → los de "solo Cobros" y la gente de Planet con el permiso (ver auth.js)
 
 import { ok, err, authErr } from './http.js';
-import { login, logout, usuarioDeSesion, esPlanet, esAdmin, tieneCobros } from './auth.js';
+import { login, logout, usuarioDeSesion, esPlanet, esAdmin, tieneCobros, soloCobros } from './auth.js';
 import { listarConsultas, ultimoCambio, nuevaConsulta, responder, cambiarEstado } from './consultas.js';
 import { metricas } from './metricas.js';
 import { listarNotas, guardarNota, borrarNota } from './notas.js';
@@ -38,12 +39,14 @@ const ACCIONES = {
     fn: async ({ db, p, ctx }) => {
       const r = await login(db, p, ctx);
       if (r.error) return r.error;
-      return ok({ token: r.token, user: datosUsuario(r.user), ...(await paquete(db, r.user, {})) });
+      // Quien es "solo Cobros" no recibe consultas
+      const datos = soloCobros(r.user) ? {} : await paquete(db, r.user, {});
+      return ok({ token: r.token, user: datosUsuario(r.user), ...datos });
     },
   },
   logout: { acceso: 'publica', fn: ({ db, p }) => logout(db, p) },
   // Los permisos pueden cambiar con la sesión ya abierta: el portal los vuelve a pedir al abrir
-  yo: { acceso: 'usuario', fn: ({ me }) => ok({ user: datosUsuario(me) }) },
+  yo: { acceso: 'sesion', fn: ({ me }) => ok({ user: datosUsuario(me) }) },
 
   consultas: { acceso: 'usuario', fn: async ({ db, me, p }) => ok(await paquete(db, me, p)) },
   novedades: { acceso: 'usuario', fn: async ({ db, me }) => ok({ ultimo: await ultimoCambio(db, me) }) },
@@ -87,7 +90,8 @@ const ACCIONES = {
 };
 
 const PERMITIDO = {
-  usuario: () => true,
+  sesion: () => true,
+  usuario: (u) => !soloCobros(u),     // los de "solo Cobros" no tocan consultas, avisos ni fotos
   planet: esPlanet,
   admin: esAdmin,
   cobros: tieneCobros,

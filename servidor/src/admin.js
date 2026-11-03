@@ -4,7 +4,8 @@ import { ok, err } from './http.js';
 import { hashPassword, borrarSesionesDe } from './auth.js';
 import { ahoraAR, texto, idValido, esVerdadero } from './util.js';
 
-const EQUIPOS = ['planet', 'cliente'];
+// 'cobros' = solo ve la sección Cobros (sin empresa, sin turno, nunca admin)
+const EQUIPOS = ['planet', 'cliente', 'cobros'];
 const ROLES = ['user', 'admin'];
 const CAMPOS_CLIENTE = ['nombre', 'contacto', 'telefono', 'email', 'direccion', 'notas'];
 
@@ -33,7 +34,7 @@ export async function crearUsuario(db, p) {
   const nombre = texto(p.nombre, 100);
   const password = texto(p.password, 200);
   const team = EQUIPOS.includes(p.team) ? p.team : 'cliente';
-  const role = ROLES.includes(p.role) ? p.role : 'user';
+  const role = team !== 'cobros' && ROLES.includes(p.role) ? p.role : 'user';
   const cliente = team === 'cliente' ? texto(p.cliente, 100) : '-';
   if (!usuario || !nombre || !password) return err('Faltan campos');
   if (team === 'cliente' && (!cliente || cliente === '-')) return err('Falta la empresa del cliente');
@@ -55,12 +56,14 @@ export async function editarUsuario(db, me, p) {
   if (texto(p.nombre, 100)) cambios.nombre = texto(p.nombre, 100);
   if (EQUIPOS.includes(p.team)) cambios.team = p.team;
   if (ROLES.includes(p.role)) cambios.role = p.role;
-  if (cambios.team === 'planet') cambios.cliente = '-';
+  if (cambios.team === 'planet' || cambios.team === 'cobros') cambios.cliente = '-';
   else if (texto(p.cliente, 100)) cambios.cliente = texto(p.cliente, 100);
+  if (cambios.team === 'cobros') cambios.role = 'user';
   const password = texto(p.password, 200);
   if (password) cambios.password_hash = await hashPassword(password);
-  // Turno (para las métricas por persona) y permiso de Cobros. Un cliente no tiene ninguno.
-  if (cambios.team === 'cliente') { cambios.turno_desde = null; cambios.turno_hasta = null; cambios.cobros = 0; }
+  // Turno (para las métricas por persona) y permiso de Cobros: solo para Planet
+  // (a "solo Cobros" el permiso le viene por el equipo)
+  if (cambios.team === 'cliente' || cambios.team === 'cobros') { cambios.turno_desde = null; cambios.turno_hasta = null; cambios.cobros = 0; }
   else {
     if (p.turno_desde !== undefined) cambios.turno_desde = horaTurno(p.turno_desde);
     if (p.turno_hasta !== undefined) cambios.turno_hasta = horaTurno(p.turno_hasta);

@@ -46,6 +46,18 @@ function cobTextoForma(c) {
 }
 
 // ── ENTRAR ──
+// "Solo Cobros": la pantalla de Planet sin menú, notas ni avisos, directo en Cobros
+function abrirVistaSoloCobros() {
+  $('planet-name').textContent = sesion.nombre;
+  $('planet-role').textContent = 'Cobros';
+  $('planet-avatar').textContent = (sesion.nombre || '?')[0];
+  $('planet-avatar').style.background = avatarColor(sesion.nombre);
+  $('screen-planet').classList.add('solo-cobros');
+  $('cobros-btn').hidden = false;
+  mostrarPantalla('screen-planet');
+  irA('planet-cobros');
+}
+
 async function cargarCobros() {
   if (!cobDesde) cobDesde = cobHasta = cobHoy();
   $('cob-desde').value = cobDesde;

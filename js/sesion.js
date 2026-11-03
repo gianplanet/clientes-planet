@@ -8,6 +8,8 @@ let conHistorial = false;     // el usuario pidió ver también las cerradas vie
 let datosMostrados = false;   // ya hay consultas en pantalla (del cache o del servidor)
 
 const esPlanet = () => !!sesion && sesion.team === 'planet';
+// "Solo Cobros": entra directo a Cobros, sin consultas, avisos ni notas
+const soloCobros = () => !!sesion && sesion.team === 'cobros';
 
 // ── DATOS ──
 // Cada consulta llega con sus mensajes. Acá se le agregan dos datos que se
@@ -200,7 +202,7 @@ function estaOcupado() {
 }
 
 async function revisarNovedades() {
-  if (!sesion || document.hidden || estaOcupado()) return;
+  if (!sesion || soloCobros() || document.hidden || estaOcupado()) return;
   if (Date.now() - _ultimaCargaCompleta > RECARGAR_TODO_CADA_MS) await cargarTodo();
   else await refrescar();
 }
@@ -245,6 +247,7 @@ async function entrar() {
   sesion = Object.assign({}, res.user, { token: res.token });
   local.guardar('planet_user', sesion);
   abrirVista();
+  if (soloCobros()) return;   // no tiene consultas ni avisos
   renovarAvisos();
   pedirResumenDeTurno(true);
   usarPaquete(res);
@@ -301,19 +304,23 @@ function olvidarPantalla() {
   openCards.clear();
 }
 
-// Arma la pantalla que corresponde (Planet o cliente)
+// Arma la pantalla que corresponde (solo Cobros, Planet o cliente)
 function abrirVista() {
-  if (esPlanet()) abrirVistaPlanet(); else abrirVistaCliente();
+  if (soloCobros()) abrirVistaSoloCobros();
+  else if (esPlanet()) abrirVistaPlanet(); else abrirVistaCliente();
 }
 
 // Los permisos pueden cambiar con la sesión guardada (un admin le dio o le
-// sacó Cobros): se vuelven a pedir al abrir el portal
+// sacó Cobros, o lo pasó a "solo Cobros"): se vuelven a pedir al abrir el portal
 async function actualizarPermisos() {
   const token = sesion && sesion.token;
   const res = await api({ action: 'yo' });
   if (!res.ok || !res.user || !sesion || sesion.token !== token) return;
+  const equipoAntes = sesion.team;
   Object.assign(sesion, res.user);
   local.guardar('planet_user', sesion);
+  // Cambió de equipo: la pantalla es otra, se arma de cero
+  if (sesion.team !== equipoAntes) { location.reload(); return; }
   if (esPlanet()) mostrarBotonCobros();
 }
 
@@ -325,6 +332,7 @@ function entrarConSesionGuardada() {
   sesion = guardada;
   abrirVista();
   actualizarPermisos();
+  if (soloCobros()) return;
   renovarAvisos();
   pedirResumenDeTurno(false);
   const cache = local.leer(claveCache());

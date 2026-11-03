@@ -149,6 +149,7 @@ if (SOPORTA_AVISOS) {
 
 // Abre la consulta que vino en el aviso (o en la dirección, al abrir el portal)
 function irAConsulta(id) {
+  if (soloCobros()) return;   // no tiene consultas
   const tarjeta = $('card-' + id) || $('tcard-' + id);
   if (!tarjeta) {
     // Puede estar en otra solapa: mostramos todas y reintentamos

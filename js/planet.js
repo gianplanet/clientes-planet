@@ -14,6 +14,7 @@ function abrirVistaPlanet() {
   $('planet-role').textContent = 'Planet · ' + (sesion.role === 'admin' ? 'Admin' : 'Usuario');
   $('planet-avatar').textContent = (sesion.nombre || '?')[0];
   $('planet-avatar').style.background = avatarColor(sesion.nombre);
+  $('screen-planet').classList.remove('solo-cobros');   // por si antes entró alguien de "solo Cobros"
   // Métricas, Clientes y Usuarios son cosa de admins
   ['admin-sep', 'metricas-btn', 'admin-clientes-btn', 'admin-btn'].forEach(id => { $(id).hidden = sesion.role !== 'admin'; });
   mostrarBotonCobros();

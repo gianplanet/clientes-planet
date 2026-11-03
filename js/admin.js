@@ -54,7 +54,8 @@ function pintarUsuarios() {
   const q = normalizar(busquedaUsuarios);
   const coincide = u => !q || normalizar([u.usuario, u.nombre, u.cliente].join(' ')).includes(q);
   const dePlanet = usuariosCargados.filter(u => u.team === 'planet');
-  const deClientes = usuariosCargados.filter(u => u.team !== 'planet');
+  const deCobros = usuariosCargados.filter(u => u.team === 'cobros');
+  const deClientes = usuariosCargados.filter(u => u.team !== 'planet' && u.team !== 'cobros');
 
   // Todas las empresas: las que tienen usuarios y las registradas que no tienen ninguno
   const empresas = [...new Set(deClientes.map(u => u.cliente || '-')
@@ -64,6 +65,7 @@ function pintarUsuarios() {
   _pocasEmpresas = empresas.length <= POCAS_EMPRESAS;
 
   const grupos = [grupoUsuarios('planet', 'Equipo Planet', dePlanet, coincide)]
+    .concat(deCobros.length ? [grupoUsuarios('cobros', 'Solo Cobros', deCobros, coincide)] : [])
     .concat(empresas.map(n => grupoUsuarios(n, n, deClientes.filter(u => (u.cliente || '-') === n), coincide)));
   const sinEmpresa = deClientes.filter(u => !u.cliente || u.cliente === '-');
   if (sinEmpresa.length) grupos.push(grupoUsuarios('-', 'Sin empresa', sinEmpresa, coincide));
@@ -113,7 +115,8 @@ function filaUsuario(u) {
         <div class="nombre">${esc(u.nombre)}</div>
         <div class="usuario">${esc(u.usuario)}${turno ? ` · <span class="fila-turno">🕑 ${turno}</span>` : ''}</div>
       </div>
-      ${u.team === 'planet' && Number(u.cobros) === 1 ? '<span class="etiqueta cobros">Cobros</span>' : ''}
+      ${u.team === 'cobros' ? '<span class="etiqueta cobros">Solo Cobros</span>'
+        : u.team === 'planet' && Number(u.cobros) === 1 ? '<span class="etiqueta cobros">Cobros</span>' : ''}
       ${u.role === 'admin' ? '<span class="etiqueta admin">Admin</span>' : ''}
       <div class="fila-acciones">
         <button class="btn-chico" onclick="editarUsuario(${jsArg(u.usuario)})">Editar</button>
@@ -131,8 +134,8 @@ function filaEditandoUsuario(u) {
       <div class="admin-grid">
         <div class="field"><label>Nombre</label><input type="text" id="eu-nombre" value="${esc(u.nombre)}"></div>
         <div class="field"><label>Equipo</label>
-          <select id="eu-team" onchange="$('eu-cliente-wrap').hidden = this.value !== 'cliente'; $('eu-turno-wrap').hidden = $('eu-cobros-wrap').hidden = this.value !== 'planet'">
-            ${opcion('planet', 'Planet', u.team)}${opcion('cliente', 'Cliente', u.team)}
+          <select id="eu-team" onchange="$('eu-cliente-wrap').hidden = this.value !== 'cliente'; $('eu-turno-wrap').hidden = $('eu-cobros-wrap').hidden = this.value !== 'planet'; $('eu-role-wrap').hidden = this.value === 'cobros'">
+            ${opcion('planet', 'Planet', u.team)}${opcion('cliente', 'Cliente', u.team)}${opcion('cobros', 'Solo Cobros', u.team)}
           </select>
         </div>
         <div class="field" id="eu-cliente-wrap"${u.team === 'cliente' ? '' : ' hidden'}><label>Empresa</label>
@@ -151,7 +154,7 @@ function filaEditandoUsuario(u) {
           <label class="check-fila"><input type="checkbox" id="eu-cobros"${Number(u.cobros) === 1 ? ' checked' : ''}>
             Ve <b>Cobros</b> <span class="field-hint">(cobros contra entrega)</span></label>
         </div>
-        <div class="field"><label>Rol</label>
+        <div class="field" id="eu-role-wrap"${u.team === 'cobros' ? ' hidden' : ''}><label>Rol</label>
           <select id="eu-role">${opcion('user', 'Usuario', u.role)}${opcion('admin', 'Admin', u.role)}</select>
         </div>
         <div class="field"><label>Nueva contraseña</label>
@@ -174,9 +177,9 @@ function editarUsuario(usuario) {
 function nuevoUsuarioEn(clave) {
   const form = $('new-user-form');
   form.hidden = false;
-  $('nu-team').value = clave === 'planet' ? 'planet' : 'cliente';
+  $('nu-team').value = clave === 'planet' || clave === 'cobros' ? clave : 'cliente';
   mostrarCampoEmpresa();
-  if (clave !== 'planet') $('nu-empresa').value = clave;
+  if (clave !== 'planet' && clave !== 'cobros') $('nu-empresa').value = clave;
   form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   $('nu-user').focus();
 }
