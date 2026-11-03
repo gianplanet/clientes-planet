@@ -21,3 +21,6 @@ id = "fea0791d86b041938d0250dfed1ea6d9"
 [vars]
 VAPID_PUBLICA = "BHJf4v1KDyPFqXjuASYrrwiBxTsKHPlEcdv2Yf8RVRC0n6FdVATeeZmLqcazXQxS8qaTQklm9praJxnjyiJvax0"
 PORTAL_URL = "https://atencionalcliente.planetlog.com.ar/"
+# Cobros: desde qué día de entrega se arrastran los pendientes (el día que se empezó a usar el portal para los cobros).
+# Lo anterior se llevó en papel y no tiene marcas.
+COBROS_DESDE = "2026-11-03"

@@ -72,7 +72,7 @@ const ACCIONES = {
   nota_borrar: { acceso: 'planet', fn: ({ db, me, p }) => borrarNota(db, me, p) },
 
   // Cobros contra entrega
-  cobros: { acceso: 'cobros', fn: ({ db, p }) => listarCobros(db, p) },
+  cobros: { acceso: 'cobros', fn: ({ db, env, p }) => listarCobros(db, env, p) },
   cobros_traer: { acceso: 'cobros', fn: ({ db, env, p }) => traerCobros(db, env, p) },
   cobro_marcar: { acceso: 'cobros', fn: ({ db, me, p }) => marcarCobro(db, me, p) },
 

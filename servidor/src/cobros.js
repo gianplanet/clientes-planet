@@ -13,7 +13,9 @@ import { entregadosDe, datosDeCobro, cookieLightdata } from './lightdata.js';
 
 // Clientes con cobro, tal cual se llaman en Lightdata
 export const CLIENTES_COBRO = ['HAPPE', 'Tienda Directa.ar'];
-const FORMAS = ['efectivo', 'transferencia'];
+// 'debe' = se revisó y quedó sin pagar (o el chofer no lo rindió): se arrastra a los días siguientes
+const FORMAS = ['efectivo', 'transferencia', 'debe'];
+const ARRASTRE_POR_DEFECTO_DIAS = 31;   // si no está configurado COBROS_DESDE
 const VENTANA_DIAS = 30;          // un envío puede entregarse hasta un mes después de la venta
 const DETALLES_POR_TANDA = 40;    // + las páginas del listado y el login, por debajo de los 50 pedidos
 const PENDIENTES_TTL_S = 600;     // lo que quedó por traer, entre una tanda y la siguiente
@@ -38,17 +40,36 @@ function rango(p) {
   return { desde, hasta };
 }
 
+// Comienzo de un día de Argentina (UTC-3) en ms
+const msDia = (dia) => Date.parse(dia + 'T00:00:00-03:00');
+
 // ── LEER ───────────────────────────────────────────────────
-export async function listarCobros(db, p) {
+// Los cobros del rango (la plata cuenta en el día de ENTREGA), y además:
+//  · pendientes: de días anteriores, sin marcar o que deben. Se arrastran hasta
+//    que se marquen, pero solo desde COBROS_DESDE (el día que se empezó a usar
+//    el portal: lo de antes se llevó en papel y no tiene marcas).
+//  · cobradosDespues: de días anteriores que se marcaron como pagados dentro del
+//    rango. Se muestran para saber qué entró, pero suman en su día de entrega.
+export async function listarCobros(db, env, p) {
   const r = rango(p);
   if (r.error) return err(r.error);
-  const { results } = await db.prepare(
-    `SELECT c.did, c.cliente, c.tracking, c.destinatario, c.direccion, c.chofer, c.monto, c.entregado, c.dia,
+  const arrastreDesde = diaValido(env.COBROS_DESDE) || sumarDias(r.desde, -ARRASTRE_POR_DEFECTO_DIAS);
+  const columnas = `c.did, c.cliente, c.tracking, c.destinatario, c.direccion, c.chofer, c.monto, c.entregado, c.dia,
             c.forma, c.marcado_por, c.marcado_en, COALESCE(u.nombre, c.marcado_por) AS marcado_nombre
-     FROM cobros c LEFT JOIN usuarios u ON lower(u.usuario) = lower(c.marcado_por)
-     WHERE c.dia BETWEEN ? AND ? ORDER BY c.chofer, c.dia, c.entregado`
-  ).bind(r.desde, r.hasta).all();
-  return ok({ cobros: results, clientes: CLIENTES_COBRO });
+     FROM cobros c LEFT JOIN usuarios u ON lower(u.usuario) = lower(c.marcado_por)`;
+  const orden = 'ORDER BY c.chofer, c.dia, c.entregado';
+  const [rango_, pend, despues] = await db.batch([
+    db.prepare(`SELECT ${columnas} WHERE c.dia BETWEEN ? AND ? ${orden}`).bind(r.desde, r.hasta),
+    db.prepare(`SELECT ${columnas} WHERE c.dia < ? AND c.dia >= ? AND c.forma IN ('', 'debe') ${orden}`)
+      .bind(r.desde, arrastreDesde),
+    db.prepare(`SELECT ${columnas} WHERE c.dia < ? AND c.forma IN ('efectivo', 'transferencia')
+                AND c.marcado_en >= ? AND c.marcado_en < ? ${orden}`)
+      .bind(r.desde, msDia(r.desde), msDia(r.hasta) + DIA_MS),
+  ]);
+  return ok({
+    cobros: rango_.results, pendientes: pend.results, cobradosDespues: despues.results,
+    arrastreDesde, clientes: CLIENTES_COBRO,
+  });
 }
 
 // ── TRAER DE LIGHTDATA ─────────────────────────────────────
@@ -131,7 +152,7 @@ export async function marcarCobro(db, me, p) {
   const did = idValido(p.did);
   if (!did) return err('Falta el envío');
   const forma = p.forma ? String(p.forma) : '';
-  if (forma && !FORMAS.includes(forma)) return err('La forma de pago tiene que ser efectivo o transferencia');
+  if (forma && !FORMAS.includes(forma)) return err('La forma de pago tiene que ser efectivo, transferencia o debe');
   const actual = await db.prepare('SELECT forma FROM cobros WHERE did = ?').bind(did).first();
   if (!actual) return err('Ese cobro no está cargado');
   if (actual.forma === forma) return ok();

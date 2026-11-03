@@ -1,15 +1,23 @@
 // ═══ COBROS CONTRA ENTREGA ═══
 // Los entregados de los clientes que cobran en la puerta (HAPPE y Tienda
 // Directa.ar), traídos solos de Lightdata. En cada uno se marca si pagó en
-// efectivo o por transferencia, y se baja un Excel por chofer para imprimir.
-// Solo lo ve la gente de Planet con el permiso (Admin → Usuarios).
+// efectivo, por transferencia o si debe, y se baja un Excel por chofer para
+// imprimir. Solo lo ve la gente de Planet con el permiso (Admin → Usuarios).
+//
+// La plata cuenta en el día de ENTREGA. Lo que quedó sin marcar o debe se
+// arrastra a los días siguientes ("Pendientes de días anteriores") hasta que se
+// marque; cuando se paga más tarde, figura en "Cobrados de días anteriores"
+// del día en que se marcó, pero suma en su día de entrega.
 
-const COB_FORMAS = { efectivo: 'Efectivo', transferencia: 'Transferencia' };
+const COB_FORMAS = { efectivo: 'Efectivo', transferencia: 'Transferencia', debe: 'Debe' };
+const COB_PAGADO = f => f === 'efectivo' || f === 'transferencia';
 const COB_RETRAER_MS = 3 * 60000;      // no volver a preguntarle a Lightdata más seguido que esto
 const COB_MAX_TANDAS = 60;
 
 let cobDesde = '', cobHasta = '';
-let cobDatos = [];
+let cobDatos = [];                     // entregados en el rango
+let cobPendientes = [];                // de días anteriores, sin marcar o deben
+let cobCobradosDespues = [];           // de días anteriores, pagados dentro del rango
 let cobClientes = [];
 let cobCliente = 'Todos';
 let cobBusca = '';
@@ -17,9 +25,25 @@ let cobTrayendo = false;
 let cobUltimoTraer = {};               // "desde|hasta" → ms
 
 const cobHoy = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
+const cobDiaDeMs = ms => new Date(ms).toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
 const cobPlata = n => '$' + Math.round(n || 0).toLocaleString('es-AR');
 const cobDiaTexto = d => d ? d.split('-').reverse().join('/') : '';
+const cobDiaCorto = d => cobDiaTexto(d).slice(0, 5);
 const cobVariosDias = () => cobDesde !== cobHasta;
+const cobPlural = (n, s, p) => `${n} ${n === 1 ? s : (p || s + 's')}`;
+
+// Pagado después del día de entrega → "cobrado 30/10"
+function cobCobradoTarde(c) {
+  if (!COB_PAGADO(c.forma) || !c.marcado_en) return '';
+  const dia = cobDiaDeMs(c.marcado_en);
+  return dia > c.dia ? cobDiaCorto(dia) : '';
+}
+// Texto de la forma de pago (pantalla y Excel)
+function cobTextoForma(c) {
+  if (!c.forma) return 'Sin marcar';
+  const tarde = cobCobradoTarde(c);
+  return COB_FORMAS[c.forma] + (tarde ? ` · cobrado ${tarde}` : '');
+}
 
 // ── ENTRAR ──
 async function cargarCobros() {
@@ -59,6 +83,8 @@ async function cobListar(primera) {
     return;
   }
   cobDatos = res.cobros || [];
+  cobPendientes = res.pendientes || [];
+  cobCobradosDespues = res.cobradosDespues || [];
   cobClientes = res.clientes || [];
   pintarCobros();
 }
@@ -83,7 +109,7 @@ async function cobTraer() {
   btn.classList.remove('spinning');
   if (error) { cobEstado('⚠ ' + error, true); return; }
   cobUltimoTraer[desde + '|' + hasta] = Date.now();
-  cobEstado(`Actualizado con Lightdata ${ahoraTexto().slice(-5)}${nuevos ? ` · ${nuevos} nuevo${nuevos === 1 ? '' : 's'}` : ''}`);
+  cobEstado(`Actualizado con Lightdata ${ahoraTexto().slice(-5)}${nuevos ? ` · ${cobPlural(nuevos, 'nuevo')}` : ''}`);
   if (desde === cobDesde && hasta === cobHasta) await cobListar(false);
 }
 
@@ -101,18 +127,20 @@ function cobBuscar(v) {
   pintarCobros();
 }
 
-function cobVisibles() {
+function cobFiltrar(lista) {
   const q = normalizar(cobBusca.trim());
-  return cobDatos.filter(c => (cobCliente === 'Todos' || c.cliente === cobCliente)
+  return lista.filter(c => (cobCliente === 'Todos' || c.cliente === cobCliente)
     && (!q || normalizar([c.tracking, c.direccion, c.destinatario, c.chofer].join(' ')).includes(q)));
 }
+const cobVisibles = () => cobFiltrar(cobDatos);
 
 function cobTotales(lista) {
-  const t = { total: 0, n: 0, efectivo: 0, nEfectivo: 0, transferencia: 0, nTransferencia: 0, sinMarcar: 0, nSinMarcar: 0 };
+  const t = { total: 0, n: 0, efectivo: 0, nEfectivo: 0, transferencia: 0, nTransferencia: 0, debe: 0, nDebe: 0, sinMarcar: 0, nSinMarcar: 0 };
   for (const c of lista) {
     t.total += c.monto; t.n++;
     if (c.forma === 'efectivo') { t.efectivo += c.monto; t.nEfectivo++; }
     else if (c.forma === 'transferencia') { t.transferencia += c.monto; t.nTransferencia++; }
+    else if (c.forma === 'debe') { t.debe += c.monto; t.nDebe++; }
     else { t.sinMarcar += c.monto; t.nSinMarcar++; }
   }
   return t;
@@ -132,69 +160,94 @@ function cobPorChofer(lista) {
 // ── PINTAR ──
 function pintarCobros() {
   const lista = cobVisibles();
-  const t = cobTotales(lista);
+  const pendientes = cobFiltrar(cobPendientes);
+  const despues = cobFiltrar(cobCobradosDespues);
+  const t = cobTotales(lista), tp = cobTotales(pendientes);
+  const falta = t.nDebe + t.nSinMarcar;
   const tile = (label, valor, pie, alerta) => `<div class="met-tile"><div class="met-label">${label}</div>
     <div class="met-valor">${valor}</div><div class="met-pie${alerta ? ' alerta' : ''}">${pie}</div></div>`;
   $('cob-resumen').innerHTML = [
-    tile('A cobrar', cobPlata(t.total), `${t.n} envío${t.n === 1 ? '' : 's'}`),
+    tile('A cobrar', cobPlata(t.total), cobPlural(t.n, 'envío')),
     tile('Efectivo', cobPlata(t.efectivo), `${t.nEfectivo} · lo rinden los choferes`),
     tile('Transferencia', cobPlata(t.transferencia), `${t.nTransferencia}`),
-    tile('Sin marcar', cobPlata(t.sinMarcar), t.nSinMarcar ? `${t.nSinMarcar} por marcar` : 'Todo marcado ✓', t.nSinMarcar > 0),
+    tile('Falta cobrar', cobPlata(t.debe + t.sinMarcar),
+      falta ? [t.nDebe ? `${t.nDebe} debe${t.nDebe === 1 ? '' : 'n'}` : '', t.nSinMarcar ? `${t.nSinMarcar} sin marcar` : ''].filter(Boolean).join(' · ') : t.n ? 'Todo cobrado ✓' : 'Sin entregas todavía', falta > 0),
+    tp.n ? tile('De días anteriores', cobPlata(tp.total), `${cobPlural(tp.n, 'pendiente')} de antes`, true) : '',
   ].join('');
 
   const cuenta = c => cobDatos.filter(x => c === 'Todos' || x.cliente === c).length;
   $('cob-clientes').innerHTML = ['Todos', ...cobClientes].map(c =>
     `<button class="client-chip${c === cobCliente ? ' active' : ''}" onclick="cobElegirCliente(${jsArg(c)})">${esc(c)} <span class="cnt">${cuenta(c)}</span></button>`).join('');
 
-  const cont = $('cob-contenido');
-  if (!lista.length) {
-    cont.innerHTML = `<div class="empty-state"><p>${cobDatos.length ? 'Nada coincide con la búsqueda.'
-      : `No hay entregas con cobro ${cobVariosDias() ? 'en esas fechas' : 'ese día'}${cobTrayendo ? ' todavía (buscando en Lightdata…)' : ''}.`}</p></div>`;
-    return;
+  let html = '';
+  if (pendientes.length) {
+    html += `<div class="cob-seccion pendiente">
+      <div class="cob-seccion-cab"><b>Pendientes de días anteriores</b> · ${cobPlural(pendientes.length, 'envío')} · ${cobPlata(tp.total)}
+        <span>Siguen apareciendo hasta que se marquen Efectivo o Transferencia. Suman en su día de entrega.</span></div>
+      ${cobPorChofer(pendientes).map(g => cobHtmlChofer(g, true)).join('')}
+    </div>`;
   }
-  cont.innerHTML = cobPorChofer(lista).map(cobHtmlChofer).join('');
+  if (lista.length) {
+    html += cobPorChofer(lista).map(g => cobHtmlChofer(g, cobVariosDias())).join('');
+  } else {
+    html += `<div class="empty-state"><p>${cobDatos.length ? 'Nada coincide con la búsqueda.'
+      : `No hay entregas con cobro ${cobVariosDias() ? 'en esas fechas' : 'ese día'}${cobTrayendo ? ' todavía (buscando en Lightdata…)' : ''}.`}</p></div>`;
+  }
+  if (despues.length) {
+    const td = cobTotales(despues);
+    html += `<div class="cob-seccion despues">
+      <div class="cob-seccion-cab"><b>Cobrados de días anteriores</b> · ${cobPlural(despues.length, 'envío')} · ${cobPlata(td.total)}
+        <span>Se pagaron ${cobVariosDias() ? 'en estas fechas' : 'este día'}, pero suman en su día de entrega.</span></div>
+      ${cobPorChofer(despues).map(g => cobHtmlChofer(g, true)).join('')}
+    </div>`;
+  }
+  $('cob-contenido').innerHTML = html;
 }
 
-function cobHtmlChofer(g) {
+function cobHtmlChofer(g, conFecha) {
   const t = cobTotales(g.items);
   return `<div class="cob-chofer">
     <div class="cob-chofer-cab">
       <div class="fila-avatar" style="background:${avatarColor(g.chofer)}">${esc((g.chofer || '?').trim()[0] || '?')}</div>
-      <div class="cob-chofer-nombre">${esc(g.chofer)}<span>${t.n} entrega${t.n === 1 ? '' : 's'} · ${cobPlata(t.total)}</span></div>
+      <div class="cob-chofer-nombre">${esc(g.chofer)}<span>${cobPlural(t.n, 'entrega')} · ${cobPlata(t.total)}</span></div>
       <div class="cob-chofer-tot">
         <span class="cob-pill efectivo">Efectivo a rendir <b>${cobPlata(t.efectivo)}</b></span>
         <span class="cob-pill transferencia">Transf. <b>${cobPlata(t.transferencia)}</b></span>
+        ${t.nDebe ? `<span class="cob-pill debe">Debe <b>${cobPlata(t.debe)}</b></span>` : ''}
         ${t.nSinMarcar ? `<span class="cob-pill sin">${t.nSinMarcar} sin marcar</span>` : ''}
       </div>
     </div>
-    ${g.items.map(cobHtmlFila).join('')}
+    ${g.items.map(c => cobHtmlFila(c, conFecha)).join('')}
   </div>`;
 }
 
-function cobHtmlFila(c) {
+function cobHtmlFila(c, conFecha) {
   const hora = (c.entregado || '').slice(-5);
-  const cuando = cobVariosDias() ? `${cobDiaTexto(c.dia).slice(0, 5)} ${hora}` : hora;
+  const cuando = conFecha ? `${cobDiaCorto(c.dia)} ${hora}` : hora;
+  const tarde = cobCobradoTarde(c);
   const quien = c.forma && c.marcado_nombre ? `Marcó ${c.marcado_nombre}${c.marcado_en ? ' · ' + textoFecha(new Date(c.marcado_en)) : ''}` : '';
   const boton = f => `<button class="cob-forma ${f}${c.forma === f ? ' activo' : ''}" onclick="cobMarcar(${c.did}, '${f}')"
       aria-pressed="${c.forma === f}">${COB_FORMAS[f]}</button>`;
-  return `<div class="cob-fila${c.forma ? '' : ' pendiente'}" id="cob-${c.did}">
+  return `<div class="cob-fila${c.forma === 'debe' ? ' debe' : c.forma ? '' : ' pendiente'}" id="cob-${c.did}">
     <div class="cob-datos">
       <div class="cob-linea1"><b>${esc(c.tracking || '—')}</b>
         <span class="ticket-client-tag" style="--tono:${tonoCliente(c.cliente)}">${esc(c.cliente)}</span>
-        <span class="cob-hora">${esc(cuando)}</span></div>
+        <span class="cob-hora">${esc(cuando)}</span>
+        ${tarde ? `<span class="cob-tarde">cobrado ${esc(tarde)}</span>` : ''}</div>
       <div class="cob-dir">${esc(c.direccion || 'Sin dirección')}</div>
       ${c.destinatario ? `<div class="cob-dest">${esc(c.destinatario)}</div>` : ''}
     </div>
     <div class="cob-monto">${cobPlata(c.monto)}</div>
-    <div class="cob-formas" title="${esc(quien)}">${boton('efectivo')}${boton('transferencia')}</div>
+    <div class="cob-formas" title="${esc(quien)}">${boton('efectivo')}${boton('transferencia')}${boton('debe')}</div>
   </div>`;
 }
 
 // ── MARCAR ──
 // Tocar la forma ya marcada la desmarca
 async function cobMarcar(did, forma) {
-  const c = cobDatos.find(x => x.did === did);
+  const c = [cobDatos, cobPendientes, cobCobradosDespues].map(l => l.find(x => x.did === did)).find(Boolean);
   if (!c) return;
+  const esDeAntes = !cobDatos.includes(c);
   const antes = { forma: c.forma, marcado_nombre: c.marcado_nombre, marcado_en: c.marcado_en };
   const nueva = c.forma === forma ? '' : forma;
   Object.assign(c, { forma: nueva, marcado_nombre: nueva ? sesion.nombre : '', marcado_en: nueva ? Date.now() : 0 });
@@ -203,14 +256,18 @@ async function cobMarcar(did, forma) {
   if (!res.ok) {
     Object.assign(c, antes);
     pintarCobros();
-    toast('Error: ' + (res.error || 'No se pudo guardar'));
+    return toast('Error: ' + (res.error || 'No se pudo guardar'));
   }
+  // Uno de días anteriores puede cambiar de bloque (pendiente ↔ cobrado): se vuelve a pedir
+  if (esDeAntes) cobListar(false);
 }
 
 // ── EXCEL ──
 function cobDescargarExcel() {
   const lista = cobVisibles();
-  if (!lista.length) return toast('No hay cobros para descargar');
+  const pendientes = cobFiltrar(cobPendientes);
+  const despues = cobFiltrar(cobCobradosDespues);
+  if (!lista.length && !pendientes.length && !despues.length) return toast('No hay cobros para descargar');
   const rango = cobVariosDias() ? `del ${cobDiaTexto(cobDesde)} al ${cobDiaTexto(cobHasta)}` : `del ${cobDiaTexto(cobDesde)}`;
   const clientes = cobCliente === 'Todos' ? cobClientes.join(' y ') : cobCliente;
   const C = 7;                                   // columnas: A..G
@@ -218,37 +275,65 @@ function cobDescargarExcel() {
   const fila = celdas => { filas.push(celdas); return filas.length; };
   const unir = (r, a, b) => combinar.push(`${xlsxColumna(a)}${r}:${xlsxColumna(b)}${r}`);
   const vacia = () => fila([]);
+  const titulo = (texto, estilo) => unir(fila([{ v: texto, e: estilo }, ...Array(C - 1).fill({ e: estilo })]), 0, C - 1);
+  const nota = texto => unir(fila([{ v: texto, e: 'sub' }]), 0, C - 1);
   const total = (texto, monto) => { const r = fila([{ v: texto, e: 'total' }, { e: 'total' }, { e: 'total' }, { e: 'total' }, { e: 'total' }, { v: monto, e: 'totalPlata' }, { e: 'total' }]); unir(r, 0, 4); };
-
-  unir(fila([{ v: `Cobros contra entrega ${rango}`, e: 'titulo' }]), 0, C - 1);
-  unir(fila([{ v: `${clientes} · Descargado el ${ahoraTexto()} por ${sesion.nombre}${cobBusca.trim() ? ` · Búsqueda: "${cobBusca.trim()}"` : ''}`, e: 'sub' }]), 0, C - 1);
-  vacia();
-
-  for (const g of cobPorChofer(lista)) {
-    const t = cobTotales(g.items);
-    unir(fila([{ v: `${g.chofer} — ${t.n} entrega${t.n === 1 ? '' : 's'}`, e: 'grupo' }, ...Array(C - 1).fill({ e: 'grupo' })]), 0, C - 1);
-    fila(['Entregado', 'Cliente', 'Tracking', 'Destinatario', 'Dirección', 'Monto', 'Pagó con'].map(v => ({ v, e: 'encabezado' })));
-    for (const c of g.items) {
-      fila([
-        { v: c.entregado || cobDiaTexto(c.dia), e: 'celda' }, { v: c.cliente, e: 'celda' }, { v: c.tracking, e: 'celda' },
-        { v: c.destinatario, e: 'ajustar' }, { v: c.direccion, e: 'ajustar' }, { v: c.monto, e: 'plata' },
-        { v: COB_FORMAS[c.forma] || 'Sin marcar', e: 'celda' },
-      ]);
-    }
+  const subtotales = t => {
     total('Efectivo a rendir', t.efectivo);
     total('Transferencias', t.transferencia);
+    if (t.nDebe) total(`Debe (${t.nDebe})`, t.debe);
     if (t.nSinMarcar) total(`Sin marcar (${t.nSinMarcar})`, t.sinMarcar);
-    vacia();
-  }
+  };
+  const bloques = (grupos, conSubtotales) => {
+    for (const g of grupos) {
+      const t = cobTotales(g.items);
+      titulo(`${g.chofer} — ${cobPlural(t.n, 'entrega')}`, 'grupo');
+      fila(['Entregado', 'Cliente', 'Tracking', 'Destinatario', 'Dirección', 'Monto', 'Pagó con'].map(v => ({ v, e: 'encabezado' })));
+      for (const c of g.items) {
+        fila([
+          { v: c.entregado || cobDiaTexto(c.dia), e: 'celda' }, { v: c.cliente, e: 'celda' }, { v: c.tracking, e: 'celda' },
+          { v: c.destinatario, e: 'ajustar' }, { v: c.direccion, e: 'ajustar' }, { v: c.monto, e: 'plata' },
+          { v: cobTextoForma(c), e: 'ajustar' },
+        ]);
+      }
+      if (conSubtotales) subtotales(t); else total('Total', t.total);
+      vacia();
+    }
+  };
 
+  titulo(`Cobros contra entrega ${rango}`, 'titulo');
+  nota(`${clientes} · Descargado el ${ahoraTexto()} por ${sesion.nombre}${cobBusca.trim() ? ` · Búsqueda: "${cobBusca.trim()}"` : ''}`);
+  vacia();
+
+  bloques(cobPorChofer(lista), true);
   const t = cobTotales(lista);
-  unir(fila([{ v: 'TOTAL GENERAL', e: 'grupo' }, ...Array(C - 1).fill({ e: 'grupo' })]), 0, C - 1);
+  titulo(`TOTAL ${cobVariosDias() ? 'DE LAS FECHAS' : 'DEL DÍA'} (por día de entrega)`, 'grupo');
   total(`Efectivo (${t.nEfectivo})`, t.efectivo);
   total(`Transferencia (${t.nTransferencia})`, t.transferencia);
+  if (t.nDebe) total(`Debe (${t.nDebe})`, t.debe);
   if (t.nSinMarcar) total(`Sin marcar (${t.nSinMarcar})`, t.sinMarcar);
   total(`Total a cobrar (${t.n})`, t.total);
+  vacia();
 
-  const blob = crearXlsx({ nombre: 'Cobros', anchos: [17, 17, 15, 24, 44, 13, 14], filas, combinar, horizontal: true });
+  if (pendientes.length) {
+    const tp = cobTotales(pendientes);
+    titulo(`PENDIENTES DE DÍAS ANTERIORES — ${cobPlural(tp.n, 'envío')}`, 'titulo');
+    nota('Entregados antes y todavía sin cobrar (deben o sin marcar). No suman en los totales de arriba: cuentan en su día de entrega.');
+    vacia();
+    bloques(cobPorChofer(pendientes), true);
+    total(`Total pendiente de días anteriores (${tp.n})`, tp.total);
+    vacia();
+  }
+  if (despues.length) {
+    const td = cobTotales(despues);
+    titulo(`COBRADOS DE DÍAS ANTERIORES — ${cobPlural(td.n, 'envío')}`, 'titulo');
+    nota(`Entregados antes y pagados ${cobVariosDias() ? 'en estas fechas' : 'este día'}. Suman en su día de entrega, no en los totales de arriba.`);
+    vacia();
+    bloques(cobPorChofer(despues), false);
+    total(`Total cobrado de días anteriores (${td.n})`, td.total);
+  }
+
+  const blob = crearXlsx({ nombre: 'Cobros', anchos: [17, 17, 15, 24, 44, 13, 17], filas, combinar, horizontal: true });
   const nombre = `Cobros ${cobDesde}${cobVariosDias() ? ' al ' + cobHasta : ''}${cobCliente === 'Todos' ? '' : ' ' + cobCliente}.xlsx`;
   descargarArchivo(blob, nombre);
   toast('✓ Excel descargado');

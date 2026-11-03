@@ -1094,6 +1094,19 @@ body {
 .cob-forma:hover:not(.activo) { color: var(--primary); }
 .cob-forma.efectivo.activo { background: var(--success); color: #fff; }
 .cob-forma.transferencia.activo { background: var(--info); color: #fff; }
+.cob-forma.debe.activo { background: var(--danger); color: #fff; }
+.cob-fila.debe { box-shadow: inset 3px 0 0 var(--danger); }
+.cob-pill.debe { background: var(--danger-bg); color: var(--danger-text); }
+.cob-tarde { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 6px; background: var(--success-bg); color: var(--success-text); }
+
+/* Bloques de días anteriores: pendientes (arriba) y cobrados después (abajo) */
+.cob-seccion { border-radius: var(--radius); padding: 12px; margin-bottom: 18px; border: 1.5px solid var(--card-border); }
+.cob-seccion.pendiente { border-color: var(--warning); background: color-mix(in srgb, var(--warning) 7%, transparent); }
+.cob-seccion.despues { border-style: dashed; }
+.cob-seccion-cab { font-size: 14px; color: var(--text); margin: 0 2px 12px; }
+.cob-seccion.pendiente .cob-seccion-cab b { color: var(--warning); }
+.cob-seccion-cab span { display: block; font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+.cob-seccion .cob-chofer:last-child { margin-bottom: 0; }
 
 @media (max-width: 640px) {
   .cob-excel { margin-left: 0; }
