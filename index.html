@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-title" content="Planet">
 <link rel="apple-touch-icon" href="logo.png">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap">
-<link rel="stylesheet" href="css/portal.css?v=17">
+<link rel="stylesheet" href="css/portal.css?v=18">
 </head>
 <body>
 
@@ -244,10 +244,8 @@
             <button class="icon-btn" id="cob-traer" onclick="cobTraer()" title="Buscar entregas nuevas en Lightdata">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
             </button>
-            <button class="btn-send cob-excel" onclick="cobDescargarExcel()">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg>
-              Descargar Excel
-            </button>
+            <!-- Un Excel por cliente (se arman en js/cobros.js) -->
+            <div class="cob-excels" id="cob-excels"></div>
           </div>
           <div class="cob-estado" id="cob-estado"></div>
           <div class="met-grid" id="cob-resumen"></div>
@@ -417,7 +415,7 @@
 <script src="js/planet.js?v=16"></script>
 <script src="js/metricas.js?v=14"></script>
 <script src="js/xlsx.js?v=15"></script>
-<script src="js/cobros.js?v=17"></script>
+<script src="js/cobros.js?v=18"></script>
 <script src="js/notas.js?v=13"></script>
 <script src="js/guia.js?v=13"></script>
 <script src="js/admin.js?v=16"></script>

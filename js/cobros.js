@@ -157,11 +157,14 @@ function cobBuscar(v) {
   pintarCobros();
 }
 
-function cobFiltrar(lista) {
-  const q = normalizar(cobBusca.trim());
-  return lista.filter(c => (cobCliente === 'Todos' || c.cliente === cobCliente)
+// Por cliente y búsqueda de la pantalla. El Excel pide su cliente y sin búsqueda.
+function cobFiltrar(lista, cliente = cobCliente, conBusqueda = true) {
+  const q = conBusqueda ? normalizar(cobBusca.trim()) : '';
+  return lista.filter(c => (cliente === 'Todos' || c.cliente === cliente)
     && (!q || normalizar([c.tracking, c.direccion, c.destinatario, c.chofer].join(' ')).includes(q)));
 }
+// "Tienda Directa.ar" → "Tienda Directa" (para botones y nombres de archivo)
+const cobNombreCorto = cliente => String(cliente).replace(/\.(com\.)?ar$/i, '').trim();
 const cobVisibles = () => cobFiltrar(cobDatos);
 
 function cobTotales(lista) {
@@ -210,6 +213,10 @@ function pintarCobros() {
   const cuenta = c => cobDatos.filter(x => c === 'Todos' || x.cliente === c).length;
   $('cob-clientes').innerHTML = ['Todos', ...cobClientes].map(c =>
     `<button class="client-chip${c === cobCliente ? ' active' : ''}" onclick="cobElegirCliente(${jsArg(c)})">${esc(c)} <span class="cnt">${cuenta(c)}</span></button>`).join('');
+  // Un Excel por cliente, siempre los dos (no dependen del filtro de arriba)
+  $('cob-excels').innerHTML = cobClientes.map(c => `<button class="btn-send cob-excel" onclick="cobDescargarExcel(${jsArg(c)})">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg>
+      Excel ${esc(cobNombreCorto(c))}</button>`).join('');
 
   let html = '';
   if (pendientes.length) {
@@ -372,13 +379,14 @@ async function cobMarcar(did, forma, ef, tr) {
 }
 
 // ── EXCEL ──
-function cobDescargarExcel() {
-  const lista = cobVisibles();
-  const pendientes = cobFiltrar(cobPendientes);
-  const despues = cobFiltrar(cobCobradosDespues);
-  if (!lista.length && !pendientes.length && !despues.length) return toast('No hay cobros para descargar');
+// Uno por cliente: todo lo de ese cliente en las fechas elegidas (sin la búsqueda de la pantalla)
+function cobDescargarExcel(cliente) {
+  const lista = cobFiltrar(cobDatos, cliente, false);
+  const pendientes = cobFiltrar(cobPendientes, cliente, false);
+  const despues = cobFiltrar(cobCobradosDespues, cliente, false);
+  const corto = cobNombreCorto(cliente);
+  if (!lista.length && !pendientes.length && !despues.length) return toast(`No hay cobros de ${corto} para descargar en esas fechas`);
   const rango = cobVariosDias() ? `del ${cobDiaTexto(cobDesde)} al ${cobDiaTexto(cobHasta)}` : `del ${cobDiaTexto(cobDesde)}`;
-  const clientes = cobCliente === 'Todos' ? cobClientes.join(' y ') : cobCliente;
   const C = 7;                                   // columnas: A..G
   const filas = [], combinar = [];
   const fila = celdas => { filas.push(celdas); return filas.length; };
@@ -410,8 +418,8 @@ function cobDescargarExcel() {
     }
   };
 
-  titulo(`Cobros contra entrega ${rango}`, 'titulo');
-  nota(`${clientes} · Descargado el ${ahoraTexto()} por ${sesion.nombre}${cobBusca.trim() ? ` · Búsqueda: "${cobBusca.trim()}"` : ''}`);
+  titulo(`Cobros ${corto} ${rango}`, 'titulo');
+  nota(`Cobros contra entrega de ${cliente} · Descargado el ${ahoraTexto()} por ${sesion.nombre}`);
   vacia();
 
   bloques(cobPorChofer(lista), true);
@@ -442,8 +450,8 @@ function cobDescargarExcel() {
     total(`Total cobrado de días anteriores (${td.n})`, td.total);
   }
 
-  const blob = crearXlsx({ nombre: 'Cobros', anchos: [17, 17, 15, 24, 44, 13, 17], filas, combinar, horizontal: true });
-  const nombre = `Cobros ${cobDesde}${cobVariosDias() ? ' al ' + cobHasta : ''}${cobCliente === 'Todos' ? '' : ' ' + cobCliente}.xlsx`;
+  const blob = crearXlsx({ nombre: `Cobros ${corto}`, anchos: [17, 17, 15, 24, 44, 13, 17], filas, combinar, horizontal: true });
+  const nombre = `Cobros ${corto} ${cobDesde}${cobVariosDias() ? ' al ' + cobHasta : ''}.xlsx`;
   descargarArchivo(blob, nombre);
-  toast('✓ Excel descargado');
+  toast(`✓ Excel de ${corto} descargado`);
 }
