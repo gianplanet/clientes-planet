@@ -16,6 +16,8 @@ const MAX_INTENTOS_USUARIO = 100;   // desde muchas conexiones a la vez: es un a
 
 export const esPlanet = (u) => !!u && u.team === 'planet';
 export const esAdmin = (u) => esPlanet(u) && u.role === 'admin';
+// Cobros contra entrega: solo la gente de Planet que tiene el permiso marcado
+export const tieneCobros = (u) => esPlanet(u) && Number(u.cobros) === 1;
 
 // ── CONTRASEÑAS ────────────────────────────────────────────
 // Se guarda solo un resumen irreversible (PBKDF2-SHA256):

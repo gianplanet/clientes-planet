@@ -16,6 +16,7 @@ function abrirVistaPlanet() {
   $('planet-avatar').style.background = avatarColor(sesion.nombre);
   // Métricas, Clientes y Usuarios son cosa de admins
   ['admin-sep', 'metricas-btn', 'admin-clientes-btn', 'admin-btn'].forEach(id => { $(id).hidden = sesion.role !== 'admin'; });
+  mostrarBotonCobros();
   mostrarPantalla('screen-planet');
   acomodarIndicadores();
   if (!notasData.length) setNotas(local.leer(claveNotas()) || []);
@@ -416,6 +417,13 @@ function irA(id) {
   if (id === 'planet-usuarios') cargarUsuarios();
   if (id === 'planet-clientes') cargarClientes();
   if (id === 'planet-metricas') cargarMetricas();
+  if (id === 'planet-cobros') cargarCobros();
+}
+
+// Cobros: solo quien tiene el permiso. Si se lo sacaron estando adentro, vuelve a Consultas.
+function mostrarBotonCobros() {
+  $('cobros-btn').hidden = !sesion.cobros;
+  if (!sesion.cobros && $('planet-cobros').classList.contains('active')) irA('planet-consultas');
 }
 
 // ── RESUMEN DE TURNO ──

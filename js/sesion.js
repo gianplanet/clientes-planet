@@ -306,6 +306,17 @@ function abrirVista() {
   if (esPlanet()) abrirVistaPlanet(); else abrirVistaCliente();
 }
 
+// Los permisos pueden cambiar con la sesión guardada (un admin le dio o le
+// sacó Cobros): se vuelven a pedir al abrir el portal
+async function actualizarPermisos() {
+  const token = sesion && sesion.token;
+  const res = await api({ action: 'yo' });
+  if (!res.ok || !res.user || !sesion || sesion.token !== token) return;
+  Object.assign(sesion, res.user);
+  local.guardar('planet_user', sesion);
+  if (esPlanet()) mostrarBotonCobros();
+}
+
 // Al abrir el portal: si quedó una sesión guardada, entra directo mostrando
 // lo de la última visita y lo actualiza por detrás.
 function entrarConSesionGuardada() {
@@ -313,6 +324,7 @@ function entrarConSesionGuardada() {
   if (!guardada || !guardada.token) { local.borrar('planet_user'); return; }
   sesion = guardada;
   abrirVista();
+  actualizarPermisos();
   renovarAvisos();
   pedirResumenDeTurno(false);
   const cache = local.leer(claveCache());

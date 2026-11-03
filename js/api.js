@@ -10,7 +10,7 @@ const API_ESPERA_FOTO_MS = 90000;    // subir una foto
 // Acciones que solo leen: si tardan, se pueden repetir sin riesgo.
 // Las que escriben NO se repiten nunca: podrían mandar dos veces el mismo mensaje.
 // (Las métricas no: pueden tardar, y es mejor esperarlas una vez con el tiempo largo.)
-const API_REINTENTABLES = ['consultas', 'clientes', 'usuarios', 'notas'];
+const API_REINTENTABLES = ['consultas', 'clientes', 'usuarios', 'notas', 'cobros', 'yo'];
 
 // Fallas pasajeras (reintentar: true): en una lectura, se vuelve a probar
 const RES_TARDO = () => ({ ok: false, reintentar: true, error: 'El servidor tardó demasiado en responder. Probá de nuevo en unos segundos.' });

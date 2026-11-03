@@ -2,7 +2,7 @@
 
 import { ok, err } from './http.js';
 import { hashPassword, borrarSesionesDe } from './auth.js';
-import { ahoraAR, texto, idValido } from './util.js';
+import { ahoraAR, texto, idValido, esVerdadero } from './util.js';
 
 const EQUIPOS = ['planet', 'cliente'];
 const ROLES = ['user', 'admin'];
@@ -11,7 +11,7 @@ const CAMPOS_CLIENTE = ['nombre', 'contacto', 'telefono', 'email', 'direccion', 
 // ── USUARIOS ───────────────────────────────────────────────
 export async function listarUsuarios(db) {
   const { results } = await db.prepare(
-    'SELECT usuario, nombre, team, cliente, role, turno_desde, turno_hasta FROM usuarios ORDER BY usuario'
+    'SELECT usuario, nombre, team, cliente, role, turno_desde, turno_hasta, cobros FROM usuarios ORDER BY usuario'
   ).all();
   return ok({ usuarios: results });
 }
@@ -59,11 +59,12 @@ export async function editarUsuario(db, me, p) {
   else if (texto(p.cliente, 100)) cambios.cliente = texto(p.cliente, 100);
   const password = texto(p.password, 200);
   if (password) cambios.password_hash = await hashPassword(password);
-  // Turno (para las métricas por persona). Un cliente no tiene turno.
-  if (cambios.team === 'cliente') { cambios.turno_desde = null; cambios.turno_hasta = null; }
+  // Turno (para las métricas por persona) y permiso de Cobros. Un cliente no tiene ninguno.
+  if (cambios.team === 'cliente') { cambios.turno_desde = null; cambios.turno_hasta = null; cambios.cobros = 0; }
   else {
     if (p.turno_desde !== undefined) cambios.turno_desde = horaTurno(p.turno_desde);
     if (p.turno_hasta !== undefined) cambios.turno_hasta = horaTurno(p.turno_hasta);
+    if (p.cobros !== undefined) cambios.cobros = esVerdadero(p.cobros) ? 1 : 0;
   }
 
   const final = { ...actual, ...cambios };

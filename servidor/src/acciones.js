@@ -5,9 +5,10 @@
 //   usuario → cualquier usuario con sesión
 //   planet  → solo el equipo de Planet
 //   admin   → solo admins de Planet
+//   cobros  → gente de Planet con el permiso de Cobros (ver auth.js)
 
 import { ok, err, authErr } from './http.js';
-import { login, logout, usuarioDeSesion, esPlanet, esAdmin } from './auth.js';
+import { login, logout, usuarioDeSesion, esPlanet, esAdmin, tieneCobros } from './auth.js';
 import { listarConsultas, ultimoCambio, nuevaConsulta, responder, cambiarEstado } from './consultas.js';
 import { metricas } from './metricas.js';
 import { listarNotas, guardarNota, borrarNota } from './notas.js';
@@ -17,6 +18,7 @@ import {
 } from './admin.js';
 import { subirImagen } from './imagenes.js';
 import { guardarSuscripcion, borrarSuscripcion, avisarA } from './push.js';
+import { listarCobros, traerCobros, marcarCobro } from './cobros.js';
 
 // Lo que se manda al cargar y en cada actualización: consultas + (para Planet)
 // sus post-its, así se sincronizan si los edita desde otra computadora
@@ -27,7 +29,7 @@ async function paquete(db, me, p) {
 }
 
 function datosUsuario(u) {
-  return { usuario: u.usuario, nombre: u.nombre, team: u.team, cliente: u.cliente, role: u.role };
+  return { usuario: u.usuario, nombre: u.nombre, team: u.team, cliente: u.cliente, role: u.role, cobros: tieneCobros(u) };
 }
 
 const ACCIONES = {
@@ -40,6 +42,8 @@ const ACCIONES = {
     },
   },
   logout: { acceso: 'publica', fn: ({ db, p }) => logout(db, p) },
+  // Los permisos pueden cambiar con la sesión ya abierta: el portal los vuelve a pedir al abrir
+  yo: { acceso: 'usuario', fn: ({ me }) => ok({ user: datosUsuario(me) }) },
 
   consultas: { acceso: 'usuario', fn: async ({ db, me, p }) => ok(await paquete(db, me, p)) },
   novedades: { acceso: 'usuario', fn: async ({ db, me }) => ok({ ultimo: await ultimoCambio(db, me) }) },
@@ -67,6 +71,11 @@ const ACCIONES = {
   nota_guardar: { acceso: 'planet', fn: ({ db, me, p }) => guardarNota(db, me, p) },
   nota_borrar: { acceso: 'planet', fn: ({ db, me, p }) => borrarNota(db, me, p) },
 
+  // Cobros contra entrega
+  cobros: { acceso: 'cobros', fn: ({ db, p }) => listarCobros(db, p) },
+  cobros_traer: { acceso: 'cobros', fn: ({ db, env, p }) => traerCobros(db, env, p) },
+  cobro_marcar: { acceso: 'cobros', fn: ({ db, me, p }) => marcarCobro(db, me, p) },
+
   metricas: { acceso: 'admin', fn: ({ db, p }) => metricas(db, p) },
   usuarios: { acceso: 'admin', fn: ({ db }) => listarUsuarios(db) },
   crear_usuario: { acceso: 'admin', fn: ({ db, p }) => crearUsuario(db, p) },
@@ -81,6 +90,7 @@ const PERMITIDO = {
   usuario: () => true,
   planet: esPlanet,
   admin: esAdmin,
+  cobros: tieneCobros,
 };
 
 export async function ejecutar(action, p, env, ctx) {

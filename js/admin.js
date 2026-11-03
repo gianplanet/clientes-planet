@@ -113,6 +113,7 @@ function filaUsuario(u) {
         <div class="nombre">${esc(u.nombre)}</div>
         <div class="usuario">${esc(u.usuario)}${turno ? ` · <span class="fila-turno">🕑 ${turno}</span>` : ''}</div>
       </div>
+      ${u.team === 'planet' && Number(u.cobros) === 1 ? '<span class="etiqueta cobros">Cobros</span>' : ''}
       ${u.role === 'admin' ? '<span class="etiqueta admin">Admin</span>' : ''}
       <div class="fila-acciones">
         <button class="btn-chico" onclick="editarUsuario(${jsArg(u.usuario)})">Editar</button>
@@ -130,7 +131,7 @@ function filaEditandoUsuario(u) {
       <div class="admin-grid">
         <div class="field"><label>Nombre</label><input type="text" id="eu-nombre" value="${esc(u.nombre)}"></div>
         <div class="field"><label>Equipo</label>
-          <select id="eu-team" onchange="$('eu-cliente-wrap').hidden = this.value !== 'cliente'; $('eu-turno-wrap').hidden = this.value !== 'planet'">
+          <select id="eu-team" onchange="$('eu-cliente-wrap').hidden = this.value !== 'cliente'; $('eu-turno-wrap').hidden = $('eu-cobros-wrap').hidden = this.value !== 'planet'">
             ${opcion('planet', 'Planet', u.team)}${opcion('cliente', 'Cliente', u.team)}
           </select>
         </div>
@@ -145,6 +146,10 @@ function filaEditandoUsuario(u) {
             <input type="number" id="eu-turno-hasta" min="0" max="24" step="0.5" placeholder="hasta" value="${u.turno_hasta ?? ''}">
             <span>h</span>
           </div>
+        </div>
+        <div class="field" id="eu-cobros-wrap"${u.team === 'planet' ? '' : ' hidden'}><label>Permisos</label>
+          <label class="check-fila"><input type="checkbox" id="eu-cobros"${Number(u.cobros) === 1 ? ' checked' : ''}>
+            Ve <b>Cobros</b> <span class="field-hint">(cobros contra entrega)</span></label>
         </div>
         <div class="field"><label>Rol</label>
           <select id="eu-role">${opcion('user', 'Usuario', u.role)}${opcion('admin', 'Admin', u.role)}</select>
@@ -188,12 +193,14 @@ async function guardarUsuario(usuario, btn) {
   if (team === 'planet') {
     params.turno_desde = $('eu-turno-desde').value.trim();
     params.turno_hasta = $('eu-turno-hasta').value.trim();
+    params.cobros = $('eu-cobros').checked;
   }
   const listo = ocupado(btn, 'Guardando...');
   const res = await api(params);
   listo();
   if (!res.ok) return toast('Error: ' + (res.error || 'No se pudo actualizar'));
   toast('✓ Usuario actualizado');
+  if (usuario === sesion.usuario) actualizarPermisos();   // por si se dio (o sacó) Cobros a sí mismo
   usuarioEditando = null;
   cargarUsuarios();   // lo volvemos a pedir: así se ve guardado lo que guardó el servidor
 }
