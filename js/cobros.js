@@ -9,8 +9,7 @@
 // marque; cuando se paga más tarde, figura en "Cobrados de días anteriores"
 // del día en que se marcó, pero suma en su día de entrega.
 
-const COB_FORMAS = { efectivo: 'Efectivo', transferencia: 'Transferencia', debe: 'Debe' };
-const COB_PAGADO = f => f === 'efectivo' || f === 'transferencia';
+const COB_FORMAS = { efectivo: 'Efectivo', transferencia: 'Transferencia', mixto: 'Mixto', debe: 'Debe' };
 const COB_RETRAER_MS = 3 * 60000;      // no volver a preguntarle a Lightdata más seguido que esto
 const COB_MAX_TANDAS = 60;
 
@@ -23,6 +22,7 @@ let cobCliente = 'Todos';
 let cobBusca = '';
 let cobTrayendo = false;
 let cobUltimoTraer = {};               // "desde|hasta" → ms
+let cobMixto = null;                   // { did, ef, tr, tocadoEf, tocadoTr }: el pago mixto que se está cargando
 
 const cobHoy = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
 const cobDiaDeMs = ms => new Date(ms).toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
@@ -32,9 +32,22 @@ const cobDiaCorto = d => cobDiaTexto(d).slice(0, 5);
 const cobVariosDias = () => cobDesde !== cobHasta;
 const cobPlural = (n, s, p) => `${n} ${n === 1 ? s : (p || s + 's')}`;
 
+// Cuánto entró de cada forma y cuánto falta. Con efectivo o transferencia
+// el monto entero va a esa forma; en mixto, lo que se cargó.
+function cobPagos(c) {
+  if (c.forma === 'efectivo') return { ef: c.monto, tr: 0, falta: 0 };
+  if (c.forma === 'transferencia') return { ef: 0, tr: c.monto, falta: 0 };
+  if (c.forma === 'mixto') {
+    const ef = c.pago_efectivo || 0, tr = c.pago_transferencia || 0;
+    return { ef, tr, falta: Math.max(0, c.monto - ef - tr) };
+  }
+  return { ef: 0, tr: 0, falta: c.monto };   // sin marcar o debe
+}
+const cobPagado = c => !!c.forma && c.forma !== 'debe' && cobPagos(c).falta === 0;
+
 // Pagado después del día de entrega → "cobrado 30/10"
 function cobCobradoTarde(c) {
-  if (!COB_PAGADO(c.forma) || !c.marcado_en) return '';
+  if (!cobPagado(c) || !c.marcado_en) return '';
   const dia = cobDiaDeMs(c.marcado_en);
   return dia > c.dia ? cobDiaCorto(dia) : '';
 }
@@ -42,7 +55,12 @@ function cobCobradoTarde(c) {
 function cobTextoForma(c) {
   if (!c.forma) return 'Sin marcar';
   const tarde = cobCobradoTarde(c);
-  return COB_FORMAS[c.forma] + (tarde ? ` · cobrado ${tarde}` : '');
+  let txt = COB_FORMAS[c.forma];
+  if (c.forma === 'mixto') {
+    const p = cobPagos(c);
+    txt = `Mixto: efectivo ${cobPlata(p.ef)} + transf. ${cobPlata(p.tr)}${p.falta ? ` · debe ${cobPlata(p.falta)}` : ''}`;
+  }
+  return txt + (tarde ? ` · cobrado ${tarde}` : '');
 }
 
 // ── ENTRAR ──
@@ -148,12 +166,14 @@ const cobVisibles = () => cobFiltrar(cobDatos);
 
 function cobTotales(lista) {
   const t = { total: 0, n: 0, efectivo: 0, nEfectivo: 0, transferencia: 0, nTransferencia: 0, debe: 0, nDebe: 0, sinMarcar: 0, nSinMarcar: 0 };
+  // Un mixto suma su parte a efectivo y a transferencia, y lo que falta a "debe"
   for (const c of lista) {
     t.total += c.monto; t.n++;
-    if (c.forma === 'efectivo') { t.efectivo += c.monto; t.nEfectivo++; }
-    else if (c.forma === 'transferencia') { t.transferencia += c.monto; t.nTransferencia++; }
-    else if (c.forma === 'debe') { t.debe += c.monto; t.nDebe++; }
-    else { t.sinMarcar += c.monto; t.nSinMarcar++; }
+    const p = cobPagos(c);
+    if (p.ef) { t.efectivo += p.ef; t.nEfectivo++; }
+    if (p.tr) { t.transferencia += p.tr; t.nTransferencia++; }
+    if (!c.forma) { t.sinMarcar += c.monto; t.nSinMarcar++; }
+    else if (p.falta) { t.debe += p.falta; t.nDebe++; }
   }
   return t;
 }
@@ -238,9 +258,11 @@ function cobHtmlFila(c, conFecha) {
   const cuando = conFecha ? `${cobDiaCorto(c.dia)} ${hora}` : hora;
   const tarde = cobCobradoTarde(c);
   const quien = c.forma && c.marcado_nombre ? `Marcó ${c.marcado_nombre}${c.marcado_en ? ' · ' + textoFecha(new Date(c.marcado_en)) : ''}` : '';
-  const boton = f => `<button class="cob-forma ${f}${c.forma === f ? ' activo' : ''}" onclick="cobMarcar(${c.did}, '${f}')"
+  const boton = f => `<button class="cob-forma ${f}${c.forma === f ? ' activo' : ''}"
+      onclick="${f === 'mixto' ? `cobAbrirMixto(${c.did})` : `cobMarcar(${c.did}, '${f}')`}"
       aria-pressed="${c.forma === f}">${COB_FORMAS[f]}</button>`;
-  return `<div class="cob-fila${c.forma === 'debe' ? ' debe' : c.forma ? '' : ' pendiente'}" id="cob-${c.did}">
+  const p = cobPagos(c);
+  return `<div class="cob-fila${!c.forma ? ' pendiente' : p.falta ? ' debe' : ''}" id="cob-${c.did}">
     <div class="cob-datos">
       <div class="cob-linea1"><b>${esc(c.tracking || '—')}</b>
         <span class="ticket-client-tag" style="--tono:${tonoCliente(c.cliente)}">${esc(c.cliente)}</span>
@@ -248,27 +270,102 @@ function cobHtmlFila(c, conFecha) {
         ${tarde ? `<span class="cob-tarde">cobrado ${esc(tarde)}</span>` : ''}</div>
       <div class="cob-dir">${esc(c.direccion || 'Sin dirección')}</div>
       ${c.destinatario ? `<div class="cob-dest">${esc(c.destinatario)}</div>` : ''}
+      ${c.forma === 'mixto' ? `<div class="cob-mixto-linea">Efectivo <b>${cobPlata(p.ef)}</b> + Transf. <b>${cobPlata(p.tr)}</b>${p.falta ? ` · <span class="falta">debe ${cobPlata(p.falta)}</span>` : ''}</div>` : ''}
     </div>
     <div class="cob-monto">${cobPlata(c.monto)}</div>
-    <div class="cob-formas" title="${esc(quien)}">${boton('efectivo')}${boton('transferencia')}${boton('debe')}</div>
+    ${cobMixto && cobMixto.did === c.did ? cobHtmlMixto(c)
+      : `<div class="cob-formas" title="${esc(quien)}">${boton('efectivo')}${boton('transferencia')}${boton('mixto')}${boton('debe')}</div>`}
   </div>`;
 }
 
+// Cargar un pago mixto: dos montos; el que no se tocó se completa con lo que falta
+function cobHtmlMixto(c) {
+  const m = cobMixto;
+  return `<div class="cob-mixto-form">
+    <label>Efectivo <span>$</span><input type="number" inputmode="numeric" min="0" step="1" id="cobmx-ef"
+      value="${m.ef === '' ? '' : m.ef}" oninput="cobTipeoMixto('ef', this.value)"></label>
+    <label>Transferencia <span>$</span><input type="number" inputmode="numeric" min="0" step="1" id="cobmx-tr"
+      value="${m.tr === '' ? '' : m.tr}" oninput="cobTipeoMixto('tr', this.value)"></label>
+    <div class="cob-mixto-estado" id="cobmx-estado">${cobEstadoMixto(c)}</div>
+    <div class="cob-mixto-botones">
+      <button class="btn-chico" onclick="cobCerrarMixto()">Cancelar</button>
+      <button class="btn-chico primario" onclick="cobGuardarMixto(${c.did})">Guardar</button>
+    </div>
+  </div>`;
+}
+
+function cobBuscarCobro(did) {
+  return [cobDatos, cobPendientes, cobCobradosDespues].map(l => l.find(x => x.did === did)).find(Boolean);
+}
+
+function cobAbrirMixto(did) {
+  const c = cobBuscarCobro(did);
+  if (!c) return;
+  const ya = c.forma === 'mixto';
+  cobMixto = { did, ef: ya ? c.pago_efectivo : '', tr: ya ? c.pago_transferencia : '', tocadoEf: ya, tocadoTr: ya };
+  pintarCobros();
+  const el = $('cobmx-ef');
+  if (el) el.focus();
+}
+function cobCerrarMixto() { cobMixto = null; pintarCobros(); }
+
+const cobNum = v => (v === '' || v === null || v === undefined ? 0 : Math.max(0, Math.round(Number(v) || 0)));
+
+function cobTipeoMixto(cual, valor) {
+  const c = cobMixto && cobBuscarCobro(cobMixto.did);
+  if (!c) return;
+  const otro = cual === 'ef' ? 'tr' : 'ef';
+  cobMixto[cual] = valor;
+  cobMixto[cual === 'ef' ? 'tocadoEf' : 'tocadoTr'] = true;
+  // El otro, mientras no lo hayan tocado, se completa con lo que falta para el total
+  if (!cobMixto[otro === 'ef' ? 'tocadoEf' : 'tocadoTr']) {
+    cobMixto[otro] = valor === '' ? '' : Math.max(0, c.monto - cobNum(valor));
+    $('cobmx-' + otro).value = cobMixto[otro];
+  }
+  $('cobmx-estado').innerHTML = cobEstadoMixto(c);
+}
+
+function cobEstadoMixto(c) {
+  const suma = cobNum(cobMixto.ef) + cobNum(cobMixto.tr);
+  if (!suma) return `Total a cobrar ${cobPlata(c.monto)}`;
+  if (suma > c.monto) return `<span class="falta">Se pasa del total por ${cobPlata(suma - c.monto)}</span>`;
+  if (suma < c.monto) return `<span class="falta">Faltan ${cobPlata(c.monto - suma)}: quedan en Debe</span>`;
+  return '<span class="ok">Completa el total ✓</span>';
+}
+
+function cobGuardarMixto(did) {
+  const c = cobBuscarCobro(did);
+  if (!c || !cobMixto) return;
+  const ef = cobNum(cobMixto.ef), tr = cobNum(cobMixto.tr);
+  if (!ef && !tr) return toast('Completá cuánto pagó en efectivo y/o por transferencia');
+  if (ef + tr > c.monto) return toast(`Entre los dos se pasan del total (${cobPlata(c.monto)})`);
+  cobMixto = null;
+  cobMarcar(did, 'mixto', ef, tr);
+}
+
 // ── MARCAR ──
-// Tocar la forma ya marcada la desmarca
-async function cobMarcar(did, forma) {
-  const c = [cobDatos, cobPendientes, cobCobradosDespues].map(l => l.find(x => x.did === did)).find(Boolean);
+// Tocar la forma ya marcada la desmarca (menos mixto, que se vuelve a editar)
+async function cobMarcar(did, forma, ef, tr) {
+  const c = cobBuscarCobro(did);
   if (!c) return;
   const esDeAntes = !cobDatos.includes(c);
-  const antes = { forma: c.forma, marcado_nombre: c.marcado_nombre, marcado_en: c.marcado_en };
-  const nueva = c.forma === forma ? '' : forma;
-  Object.assign(c, { forma: nueva, marcado_nombre: nueva ? sesion.nombre : '', marcado_en: nueva ? Date.now() : 0 });
+  const antes = { forma: c.forma, pago_efectivo: c.pago_efectivo, pago_transferencia: c.pago_transferencia, marcado_nombre: c.marcado_nombre, marcado_en: c.marcado_en };
+  const nueva = forma !== 'mixto' && c.forma === forma ? '' : forma;
+  const mixto = nueva === 'mixto';
+  Object.assign(c, { forma: nueva, pago_efectivo: mixto ? ef : 0, pago_transferencia: mixto ? tr : 0,
+    marcado_nombre: nueva ? sesion.nombre : '', marcado_en: nueva ? Date.now() : 0 });
+  if (cobMixto && cobMixto.did === did) cobMixto = null;
   pintarCobros();
-  const res = await api({ action: 'cobro_marcar', did, forma: nueva });
+  const res = await api({ action: 'cobro_marcar', did, forma: nueva, efectivo: ef, transferencia: tr });
   if (!res.ok) {
     Object.assign(c, antes);
     pintarCobros();
     return toast('Error: ' + (res.error || 'No se pudo guardar'));
+  }
+  // El servidor pasa un "mixto" que es todo de una forma a esa forma
+  if (res.forma !== undefined && res.forma !== c.forma) {
+    Object.assign(c, { forma: res.forma, pago_efectivo: res.pago_efectivo, pago_transferencia: res.pago_transferencia });
+    pintarCobros();
   }
   // Uno de días anteriores puede cambiar de bloque (pendiente ↔ cobrado): se vuelve a pedir
   if (esDeAntes) cobListar(false);

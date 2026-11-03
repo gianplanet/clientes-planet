@@ -14,7 +14,11 @@ import { entregadosDe, datosDeCobro, cookieLightdata } from './lightdata.js';
 // Clientes con cobro, tal cual se llaman en Lightdata
 export const CLIENTES_COBRO = ['HAPPE', 'Tienda Directa.ar'];
 // 'debe' = se revisó y quedó sin pagar (o el chofer no lo rindió): se arrastra a los días siguientes
-const FORMAS = ['efectivo', 'transferencia', 'debe'];
+// 'mixto' = parte en efectivo y parte por transferencia (pago_efectivo + pago_transferencia);
+//           si no llegan al monto, lo que falta cuenta como debe y también se arrastra
+const FORMAS = ['efectivo', 'transferencia', 'debe', 'mixto'];
+// Lo que sigue pendiente: sin marcar, debe, o mixto que no llega al monto
+const SQL_PENDIENTE = `(c.forma IN ('', 'debe') OR (c.forma = 'mixto' AND c.pago_efectivo + c.pago_transferencia < c.monto))`;
 const ARRASTRE_POR_DEFECTO_DIAS = 31;   // si no está configurado COBROS_DESDE
 const VENTANA_DIAS = 30;          // un envío puede entregarse hasta un mes después de la venta
 const DETALLES_POR_TANDA = 40;    // + las páginas del listado y el login, por debajo de los 50 pedidos
@@ -55,14 +59,15 @@ export async function listarCobros(db, env, p) {
   if (r.error) return err(r.error);
   const arrastreDesde = diaValido(env.COBROS_DESDE) || sumarDias(r.desde, -ARRASTRE_POR_DEFECTO_DIAS);
   const columnas = `c.did, c.cliente, c.tracking, c.destinatario, c.direccion, c.chofer, c.monto, c.entregado, c.dia,
-            c.forma, c.marcado_por, c.marcado_en, COALESCE(u.nombre, c.marcado_por) AS marcado_nombre
+            c.forma, c.pago_efectivo, c.pago_transferencia, c.marcado_por, c.marcado_en,
+            COALESCE(u.nombre, c.marcado_por) AS marcado_nombre
      FROM cobros c LEFT JOIN usuarios u ON lower(u.usuario) = lower(c.marcado_por)`;
   const orden = 'ORDER BY c.chofer, c.dia, c.entregado';
   const [rango_, pend, despues] = await db.batch([
     db.prepare(`SELECT ${columnas} WHERE c.dia BETWEEN ? AND ? ${orden}`).bind(r.desde, r.hasta),
-    db.prepare(`SELECT ${columnas} WHERE c.dia < ? AND c.dia >= ? AND c.forma IN ('', 'debe') ${orden}`)
+    db.prepare(`SELECT ${columnas} WHERE c.dia < ? AND c.dia >= ? AND ${SQL_PENDIENTE} ${orden}`)
       .bind(r.desde, arrastreDesde),
-    db.prepare(`SELECT ${columnas} WHERE c.dia < ? AND c.forma IN ('efectivo', 'transferencia')
+    db.prepare(`SELECT ${columnas} WHERE c.dia < ? AND c.forma IN ('efectivo', 'transferencia', 'mixto') AND NOT ${SQL_PENDIENTE}
                 AND c.marcado_en >= ? AND c.marcado_en < ? ${orden}`)
       .bind(r.desde, msDia(r.desde), msDia(r.hasta) + DIA_MS),
   ]);
@@ -148,20 +153,41 @@ export async function traerCobros(db, env, p) {
 }
 
 // ── MARCAR LA FORMA DE PAGO ────────────────────────────────
+// Monto en pesos: entero >= 0, o null si no es un número
+const pesos = (v) => {
+  const n = Math.round(Number(v === '' || v === null || v === undefined ? 0 : v));
+  return Number.isFinite(n) && n >= 0 && n <= 1e10 ? n : null;
+};
+// Cómo queda escrito en el historial: "mixto:20000+10000" o la forma sola
+const textoMarca = (forma, ef, tr) => (forma === 'mixto' ? `mixto:${ef}+${tr}` : forma);
+
 export async function marcarCobro(db, me, p) {
   const did = idValido(p.did);
   if (!did) return err('Falta el envío');
-  const forma = p.forma ? String(p.forma) : '';
-  if (forma && !FORMAS.includes(forma)) return err('La forma de pago tiene que ser efectivo, transferencia o debe');
-  const actual = await db.prepare('SELECT forma FROM cobros WHERE did = ?').bind(did).first();
+  let forma = p.forma ? String(p.forma) : '';
+  if (forma && !FORMAS.includes(forma)) return err('La forma de pago tiene que ser efectivo, transferencia, mixto o debe');
+  const actual = await db.prepare('SELECT forma, monto, pago_efectivo, pago_transferencia FROM cobros WHERE did = ?').bind(did).first();
   if (!actual) return err('Ese cobro no está cargado');
-  if (actual.forma === forma) return ok();
+
+  let ef = 0, tr = 0;
+  if (forma === 'mixto') {
+    ef = pesos(p.efectivo); tr = pesos(p.transferencia);
+    if (ef === null || tr === null) return err('Los montos tienen que ser números');
+    if (ef + tr === 0) return err('Poné cuánto pagó en efectivo y/o por transferencia');
+    if (ef + tr > actual.monto) return err(`Entre efectivo y transferencia se pasan del total ($${actual.monto.toLocaleString('es-AR')})`);
+    // Todo de una sola forma: queda como esa forma
+    if (ef + tr === actual.monto && tr === 0) { forma = 'efectivo'; ef = 0; }
+    else if (ef + tr === actual.monto && ef === 0) { forma = 'transferencia'; tr = 0; }
+  }
+  const antes = textoMarca(actual.forma, actual.pago_efectivo, actual.pago_transferencia);
+  const despues = textoMarca(forma, ef, tr);
+  if (antes === despues) return ok();
   const ahora = Date.now();
   await db.batch([
-    db.prepare('UPDATE cobros SET forma = ?, marcado_por = ?, marcado_en = ? WHERE did = ?')
-      .bind(forma, forma ? me.usuario : '', forma ? ahora : 0, did),
+    db.prepare('UPDATE cobros SET forma = ?, pago_efectivo = ?, pago_transferencia = ?, marcado_por = ?, marcado_en = ? WHERE did = ?')
+      .bind(forma, ef, tr, forma ? me.usuario : '', forma ? ahora : 0, did),
     db.prepare('INSERT INTO cobros_cambios (did, antes, despues, usuario, cuando) VALUES (?, ?, ?, ?, ?)')
-      .bind(did, actual.forma, forma, me.usuario, ahora),
+      .bind(did, antes, despues, me.usuario, ahora),
   ]);
-  return ok({ marcado_por: me.usuario, marcado_nombre: me.nombre, marcado_en: ahora });
+  return ok({ forma, pago_efectivo: ef, pago_transferencia: tr, marcado_por: me.usuario, marcado_nombre: me.nombre, marcado_en: ahora });
 }
